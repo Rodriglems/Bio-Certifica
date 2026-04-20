@@ -6,7 +6,6 @@
 
   const app = express();
   app.disable('etag');
-  app.use(express.json({ limit: '10mb' }));
 
   const defaultCorsOrigins = ['http://localhost:5173', 'http://localhost', 'capacitor://localhost'];
   const configuredCorsOrigins = String(process.env.CORS_ORIGINS ?? '')
@@ -43,6 +42,21 @@
     }
 
     next();
+  });
+
+  // Parseia JSON após CORS para garantir headers corretos mesmo em erros 4xx.
+  app.use(express.json({ limit: '20mb' }));
+  app.use((error: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (!error) return next();
+    if (error.type === 'entity.too.large') {
+      res.status(413).json({ ok: false, error: 'Imagem/arquivo muito grande. Tente uma foto menor.' });
+      return;
+    }
+    if (error instanceof SyntaxError) {
+      res.status(400).json({ ok: false, error: 'JSON inválido na requisição' });
+      return;
+    }
+    next(error);
   });
 
   app.use((req, res, next) => {
