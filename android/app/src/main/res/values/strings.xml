@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">App Agroecologia</string>
+    <string name="title_activity_main">App Agroecologia</string>
+    <string name="package_name">br.com.agroecologia.app</string>
+    <string name="custom_url_scheme">br.com.agroecologia.app</string>
+</resources>
