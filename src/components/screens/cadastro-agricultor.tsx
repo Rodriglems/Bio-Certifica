@@ -36,17 +36,20 @@ export function CadastroAgricultor({
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const passwordsMismatch = passwordConfirmation.length > 0 && password !== passwordConfirmation;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     const hasRequiredFarmerFields = formData.name && formData.community && formData.municipality;
     if (!hasRequiredFarmerFields) return;
 
     if (isEditMode) {
       setSubmitError(null);
+      setIsSubmitting(true);
       try {
         if (!onSaveFarmer) throw new Error("Ação de atualização indisponível.");
         await onSaveFarmer(formData);
@@ -54,12 +57,15 @@ export function CadastroAgricultor({
       } catch (error) {
         const message = error instanceof Error ? error.message : "Não foi possível atualizar o perfil.";
         setSubmitError(message);
+      } finally {
+        setIsSubmitting(false);
       }
       return;
     }
 
     if (username.trim().length >= 3 && password.trim().length >= 6 && password === passwordConfirmation) {
       setSubmitError(null);
+      setIsSubmitting(true);
       try {
         if (!onRegister) throw new Error("Ação de cadastro indisponível.");
         await onRegister({
@@ -72,6 +78,8 @@ export function CadastroAgricultor({
       } catch (error) {
         const message = error instanceof Error ? error.message : "Não foi possível concluir o cadastro.";
         setSubmitError(message);
+      } finally {
+        setIsSubmitting(false);
       }
     }
   };
@@ -315,13 +323,15 @@ export function CadastroAgricultor({
 
             <button
               type="submit"
+              disabled={isSubmitting}
               className="w-full bg-green-600 text-white py-4 px-6 rounded-xl text-lg font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2 mt-6"
             >
-              {isEditMode ? "Salvar perfil" : "Salvar e continuar"}
+              {isSubmitting ? "Salvando..." : isEditMode ? "Salvar perfil" : "Salvar e continuar"}
               <ArrowRight size={24} />
             </button>
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={() => onNavigate(backScreen)}
               className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >

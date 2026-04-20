@@ -342,6 +342,10 @@ export default function App() {
       setCurrentScreen("harvest-registration");
       setServerError(null);
     } catch (error) {
+      // Conflito de cadastro é erro esperado da tela de formulário.
+      if (error instanceof ApiError && error.status === 409) {
+        throw error;
+      }
       reportServerError(error);
       throw error;
     }
