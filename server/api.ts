@@ -8,6 +8,43 @@
   app.disable('etag');
   app.use(express.json({ limit: '10mb' }));
 
+  const defaultCorsOrigins = ['http://localhost:5173', 'http://localhost', 'capacitor://localhost'];
+  const configuredCorsOrigins = String(process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const allowedCorsOrigins = new Set([...defaultCorsOrigins, ...configuredCorsOrigins]);
+  const allowAllCorsOrigins = allowedCorsOrigins.has('*');
+
+  app.use((req, res, next) => {
+    const origin = req.header('origin');
+    const isAllowedOrigin = !!origin && (allowAllCorsOrigins || allowedCorsOrigins.has(origin));
+
+    if (isAllowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', allowAllCorsOrigins ? '*' : origin);
+      res.setHeader('Vary', 'Origin');
+    }
+
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+
+    if (req.method === 'OPTIONS') {
+      if (!origin || isAllowedOrigin) {
+        res.status(204).end();
+        return;
+      }
+      res.status(403).json({ ok: false, error: 'Origem não permitida por CORS' });
+      return;
+    }
+
+    if (origin && !isAllowedOrigin) {
+      res.status(403).json({ ok: false, error: 'Origem não permitida por CORS' });
+      return;
+    }
+
+    next();
+  });
+
   app.use((req, res, next) => {
     if (req.path.startsWith('/api/')) {
       res.setHeader('Cache-Control', 'no-store');
@@ -1275,7 +1312,7 @@
     }
   });
 
-  const port = Number(process.env.API_PORT ?? '3001');
-  app.listen(port, () => {
-    console.log(`[api] listening on http://localhost:${port}`);
+  const port = Number(process.env.PORT ?? process.env.API_PORT ?? '3001');
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`[api] listening on port ${port}`);
   });

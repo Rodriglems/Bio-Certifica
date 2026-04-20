@@ -73,6 +73,7 @@
       "scripts": {
             "dev:web": "vite",
             "dev:api": "tsx watch --tsconfig server/tsconfig.json server/api.ts",
+            "start:api": "tsx --tsconfig server/tsconfig.json server/api.ts",
             "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:api\"",
             "dev:all": "npm run dev",
             "db:migrate": "tsx --tsconfig server/tsconfig.json server/migrate.ts",
