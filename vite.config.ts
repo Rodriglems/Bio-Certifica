@@ -2,10 +2,47 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import tailwindcss from '@tailwindcss/vite';
+import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['icons/apple-touch-icon.png'],
+      manifest: {
+        name: 'BioCertifica',
+        short_name: 'BioCertifica',
+        description: 'Sistema de registro e acompanhamento agroecológico.',
+        theme_color: '#15803d',
+        background_color: '#f0fdf4',
+        display: 'standalone',
+        start_url: '/',
+        scope: '/',
+        lang: 'pt-BR',
+        icons: [
+          {
+            src: '/icons/pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+          },
+          {
+            src: '/icons/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+          },
+          {
+            src: '/icons/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      },
+    }),
+  ],
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
       alias: {
