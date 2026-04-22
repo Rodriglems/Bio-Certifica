@@ -38,6 +38,35 @@ export function CadastroAgricultor({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const municipalityOptions = [
+    "Teresina",
+    "Altos",
+    "Demerval Lobão",
+    "Beneditinos",
+    "Monsenhor Gil",
+    "José de Freitas",
+    "União",
+    "Campo Maior",
+    "Parnaíba",
+    "Picos",
+    "Barras",
+    "Floriano",
+    "Outros"
+  ];
+
+  const initialMunicipality = initialFarmer?.municipality ?? "";
+  const initialMunicipalityIsOption = municipalityOptions.includes(initialMunicipality);
+  const [selectedMunicipality, setSelectedMunicipality] = useState(
+    initialMunicipality
+      ? initialMunicipalityIsOption
+        ? initialMunicipality
+        : "Outros"
+      : ""
+  );
+  const [customMunicipality, setCustomMunicipality] = useState(
+    initialMunicipality && !initialMunicipalityIsOption ? initialMunicipality : ""
+  );
+
   const passwordsMismatch = passwordConfirmation.length > 0 && password !== passwordConfirmation;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -96,20 +125,6 @@ export function CadastroAgricultor({
     reader.readAsDataURL(file);
   };
 
-  const municipalities = [
-    "Selecione...",
-    "Arapiraca",
-    "Maceió",
-    "Palmeira dos Índios",
-    "União dos Palmares",
-    "Santana do Ipanema",
-    "São Miguel dos Campos",
-    "Penedo",
-    "Rio Largo",
-    "Delmiro Gouveia",
-    "Outros"
-  ];
-
   return (
     <div className="min-h-screen p-6 pb-24">
       <div className="max-w-md mx-auto">
@@ -158,16 +173,42 @@ export function CadastroAgricultor({
               </label>
               <select
                 required
-                value={formData.municipality}
-                onChange={(e) => setFormData({ ...formData, municipality: e.target.value })}
+                value={selectedMunicipality}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSelectedMunicipality(value);
+
+                  if (value === "Outros") {
+                    setFormData({ ...formData, municipality: customMunicipality.trim() });
+                    return;
+                  }
+
+                  setFormData({ ...formData, municipality: value });
+                }}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:border-green-500 focus:outline-none bg-white"
               >
-                {municipalities.map((city) => (
+                <option value="">Selecione...</option>
+                {municipalityOptions.map((city) => (
                   <option key={city} value={city}>
                     {city}
                   </option>
                 ))}
               </select>
+
+              {selectedMunicipality === "Outros" && (
+                <input
+                  type="text"
+                  required
+                  value={customMunicipality}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCustomMunicipality(value);
+                    setFormData({ ...formData, municipality: value.trim() });
+                  }}
+                  className="mt-3 w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:border-green-500 focus:outline-none"
+                  placeholder="Digite sua cidade"
+                />
+              )}
             </div>
 
             <div>
