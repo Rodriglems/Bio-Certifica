@@ -1,4 +1,4 @@
-# App de Agroecologia
+# Bio Certifica
 
 Projeto web (React + Vite) com API em Node/Express e banco PostgreSQL.
 

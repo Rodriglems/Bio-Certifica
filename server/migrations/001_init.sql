@@ -1,4 +1,4 @@
--- Migração inicial: tabelas para o App de Agroecologia
+-- Migração inicial: tabelas para o Bio Certifica
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
