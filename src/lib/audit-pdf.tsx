@@ -314,12 +314,12 @@ async function generateAuditPdf(appData: AppData) {
   const generatedAt = new Date().toISOString();
 
   const doc = (
-    <Document title="Relatório de Manejo (Auditoria)" author="Bio CErtifica">
+    <Document title="Relatório de Manejo Vegetal" author="Bio CErtifica">
       <Page size="A4" style={styles.page}>
         <View style={styles.headerBand}>
           <View style={styles.topAccent} />
-          <Text style={styles.title}>Relatório de Manejo</Text>
-          <Text style={styles.subtitle}>Bio Certifica</Text>
+          <Text style={styles.title}>Relatório de Manejo Vegetal</Text>
+          <Text style={styles.subtitle}>Aplicação Bio Certifica</Text>
 
           <View style={styles.metaRow}>
             <View style={styles.metaPill}>
