@@ -21,7 +21,7 @@ export function TelaInicial({ onNavigate, hasFarmer, isLoggedIn }: PropsTelaInic
         
         <div className="space-y-2">
           <h1 className="text-4xl font-bold text-white">BioCertifica</h1>
-          <p className="text-xl text-green-100">Manejo Vegetal</p>
+          <p className="text-xl text-green-100">Plano de Manejo Orgâncico</p>
         </div>
 
         <div className="space-y-4 pt-8">
