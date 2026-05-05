@@ -1,61 +1,61 @@
-**Add your own guidelines here**
-<!--
+# Guidelines do projeto
 
-System Guidelines
+Use este arquivo como referência para decisões de UI, arquitetura e escrita de código no projeto Bio Certifica.
 
-Use this file to provide the AI with rules and guidelines you want it to follow.
-This template outlines a few examples of things you can add. You can add your own sections and format it to suit your needs
+## Contexto do app
 
-TIP: More context isn't always better. It can confuse the LLM. Try and add the most important rules you need
+* O app é mobile-first e roda como web app e app Capacitor.
+* A stack principal é React + Vite no frontend, com API Node/Express e PostgreSQL no backend.
+* A interface deve ser clara, rápida de usar e adequada para pessoas no campo, com poucos passos por tarefa.
+* O idioma padrão da interface e dos textos novos é português do Brasil.
 
-# General guidelines
+## Diretrizes gerais
 
-Any general rules you want the AI to follow.
-For example:
+* Priorize simplicidade e robustez antes de sofisticação visual.
+* Prefira componentes pequenos e bem nomeados em vez de arquivos grandes e genéricos.
+* Mantenha o código alinhado com o estilo existente no projeto.
+* Evite lógica duplicada; extraia funções e componentes reutilizáveis quando fizer sentido.
+* Use layouts responsivos com flexbox ou grid; evite posicionamento absoluto quando não for essencial.
 
-* Only use absolute positioning when necessary. Opt for responsive and well structured layouts that use flexbox and grid by default
-* Refactor code as you go to keep code clean
-* Keep file sizes small and put helper functions and components in their own files.
+## Interface e experiência
 
---------------
+* Pense primeiro em telas de celular e toque com o polegar.
+* Dê preferência a fluxos curtos, com instruções objetivas e rótulos descritivos.
+* Use botões e mensagens de ação em português claro, sem jargões técnicos.
+* Confirme ações destrutivas ou irreversíveis antes de executá-las.
+* Mostre estados de carregamento, vazio e erro de forma explícita.
+* Não esconda informação importante atrás de interações desnecessárias.
 
-# Design system guidelines
-Rules for how the AI should make generations look like your company's design system
+## Design system e componentes
 
-Additionally, if you select a design system to use in the prompt box, you can reference
-your design system's components, tokens, variables and components.
-For example:
+* Reaproveite os componentes existentes em src/components/ui sempre que possível.
+* Mantenha consistência visual entre telas, especialmente em formulários, modais e navegação.
+* Use variações de componente com moderação; não crie novos padrões visuais sem necessidade.
+* Preserve acessibilidade: contraste legível, foco visível, labels claros e áreas de toque adequadas.
 
-* Use a base font-size of 14px
-* Date formats should always be in the format “Jun 10”
-* The bottom toolbar should only ever have a maximum of 4 items
-* Never use the floating action button with the bottom toolbar
-* Chips should always come in sets of 3 or more
-* Don't use a dropdown if there are 2 or fewer options
+## Código e manutenção
 
-You can also create sub sections and add more specific details
-For example:
+* Prefira TypeScript tipado de forma explícita quando isso melhorar clareza e segurança.
+* Separe regras de negócio, acesso à API e apresentação sempre que a tela crescer.
+* Evite componentes com responsabilidade demais; divida quando a leitura começar a ficar difícil.
+* Não introduza dependências novas sem motivo claro.
+* Se alterar uma tela, revise o fluxo adjacente para evitar inconsistências de navegação ou dados.
 
+## Dados e backend
 
-## Button
-The Button component is a fundamental interactive element in our design system, designed to trigger actions or navigate
-users through the application. It provides visual feedback and clear affordances to enhance user experience.
+* Valide dados de entrada no frontend e no backend quando possível.
+* Não confie apenas no cliente para garantir integridade de dados.
+* Use nomes de campos consistentes entre API, banco e frontend.
+* Em migrações SQL, prefira mudanças pequenas e reversíveis.
 
-### Usage
-Buttons should be used for important actions that users need to take, such as form submissions, confirming choices,
-or initiating processes. They communicate interactivity and should have clear, action-oriented labels.
+## Formato de texto e conteúdo
 
-### Variants
-* Primary Button
-  * Purpose : Used for the main action in a section or page
-  * Visual Style : Bold, filled with the primary brand color
-  * Usage : One primary button per section to guide users toward the most important action
-* Secondary Button
-  * Purpose : Used for alternative or supporting actions
-  * Visual Style : Outlined with the primary color, transparent background
-  * Usage : Can appear alongside a primary button for less important actions
-* Tertiary Button
-  * Purpose : Used for the least important actions
-  * Visual Style : Text-only with no border, using primary color
-  * Usage : For actions that should be available but not emphasized
--->
+* Datas e números devem seguir o padrão local do Brasil quando exibidos ao usuário.
+* Mensagens de erro devem explicar o problema e, quando possível, indicar a ação correta.
+* Textos novos devem ser curtos, diretos e compatíveis com usuários não técnicos.
+
+## Se houver dúvida
+
+* Siga a implementação existente mais próxima.
+* Se houver conflito entre clareza e decoração, escolha clareza.
+* Se uma alteração puder ser menor, faça menor.
