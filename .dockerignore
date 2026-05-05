@@ -1,0 +1,10 @@
+build
+android/.gradle
+android/app/build
+.git
+.gitignore
+.env
+.env.*
+docker-compose*.yml
+*.log
+.vscode
