@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent } from "react";
-import { ArrowLeft, ArrowRight, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, MapPin, User } from "lucide-react";
 import { Screen, Farmer } from "../../App";
 import { VoiceTextarea } from "../voice-textarea";
 
@@ -37,6 +37,8 @@ export function CadastroAgricultor({
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingGps, setIsLoadingGps] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState<string | null>(null);
 
   const municipalityOptions = [
     "Teresina",
@@ -123,6 +125,50 @@ export function CadastroAgricultor({
       setFormData((prev) => ({ ...prev, propertyPhotoDataUrl: result }));
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleUseGps = () => {
+    if (isLoadingGps) return;
+
+    if (!("geolocation" in navigator)) {
+      setGpsStatus("Este aparelho não permite capturar localização.");
+      return;
+    }
+
+    setIsLoadingGps(true);
+    setGpsStatus(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const latitude = position.coords.latitude.toFixed(6);
+        const longitude = position.coords.longitude.toFixed(6);
+        const gpsLine = `GPS da propriedade: Latitude ${latitude}, Longitude ${longitude}`;
+
+        setFormData((prev) => {
+          const currentDirections = (prev.accessDirections ?? "").trim();
+          const nextDirections = currentDirections
+            ? `${gpsLine}\n${currentDirections}`
+            : gpsLine;
+
+          return {
+            ...prev,
+            accessDirections: nextDirections
+          };
+        });
+
+        setGpsStatus("Localização capturada com sucesso.");
+        setIsLoadingGps(false);
+      },
+      () => {
+        setGpsStatus("Não foi possível capturar a localização. Verifique a permissão de GPS.");
+        setIsLoadingGps(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
   };
 
   return (
@@ -274,6 +320,18 @@ export function CadastroAgricultor({
               )}
             </div>
             <div>
+              <button
+                type="button"
+                onClick={handleUseGps}
+                disabled={isLoadingGps}
+                className="w-full mb-3 bg-green-50 text-green-800 py-3 px-4 rounded-lg border-2 border-green-200 hover:bg-green-100 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <MapPin size={20} />
+                {isLoadingGps ? "Capturando localização..." : "Usar GPS da propriedade"}
+              </button>
+              {gpsStatus && (
+                <p className="text-sm text-gray-600 mb-2">{gpsStatus}</p>
+              )}
               <label className="block text-lg font-semibold text-gray-700 mb-2">
                 Como chegar na propriedade? <span className="text-sm text-gray-500">(opcional)</span>
               </label>
