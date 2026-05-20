@@ -4,7 +4,7 @@ const SMTP_HOST = String(process.env.SMTP_HOST ?? '');
 const SMTP_PORT = Number(process.env.SMTP_PORT ?? 0);
 const SMTP_USER = String(process.env.SMTP_USER ?? '');
 const SMTP_PASS = String(process.env.SMTP_PASS ?? '').replace(/\s+/g, '');
-const EMAIL_FROM = String(process.env.EMAIL_FROM ?? 'no-reply@agroecologia.local');
+const EMAIL_FROM = String(process.env.EMAIL_FROM ?? 'no-reply@biocertifica.local');
 
 function createTransporter() {
   if (!SMTP_HOST || !SMTP_PORT) return null;
