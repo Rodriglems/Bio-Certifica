@@ -1,9 +1,10 @@
 FROM node:20-bookworm-slim
 WORKDIR /app
 
+COPY package*.json ./
+RUN npm ci
+
 COPY . .
 
-ENV NODE_ENV=production
 EXPOSE 3001
-
-CMD ["npm", "run", "start:api"]
+CMD ["sh", "-c", "npm run db:migrate && npm run start:api"]
