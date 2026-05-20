@@ -28,9 +28,9 @@ services:
       CORS_ORIGINS: http://localhost:8080,http://localhost:5173,http://localhost,capacitor://localhost
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: "587"
-      SMTP_USER: seu_email
-      SMTP_PASS: sua_senha_app
-      EMAIL_FROM: App Agroecologia <seu_email>
+      SMTP_USER: biocertificaapp@gmail.com
+      SMTP_PASS: sfxrrnftpctxkhmv
+      EMAIL_FROM: Bio Certifica <biocertificaapp@gmail.com>
     depends_on:
       db:
         condition: service_healthy
