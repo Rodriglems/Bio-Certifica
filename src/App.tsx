@@ -163,11 +163,17 @@ function isValidDailyRecord(record: Partial<DailyRecord> | null | undefined): re
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("splash");
+  
   const currentYear = new Date().getFullYear();
+
   const [appData, setAppData] = useState<AppData>(DEFAULT_APP_DATA);
+
   const [isRestoringSession, setIsRestoringSession] = useState(true);
-  const [registerConfirmFromScreen, setRegisterConfirmFromScreen] = useState<Screen>("main-menu");
+
+  const [registerConfirmFromScreen, setRegisterConfirmFromScreen] = useState<Screen>("main-menu")
+
   const [serverError, setServerError] = useState<string | null>(null);
+
   const [serverErrorTitle, setServerErrorTitle] = useState("Erro ao sincronizar");
   const [isReloading, setIsReloading] = useState(false);
 
@@ -631,6 +637,9 @@ export default function App() {
     && currentScreen !== "field-conditions"
     && currentScreen !== "observations";
 
+  const showGlobalErrorBanner = !!serverError
+    && !["farmer-registration", "confirmation", "login", "forgot-password"].includes(currentScreen);
+
   const renderScreen = () => {
     if (isRestoringSession) {
       return (
@@ -795,7 +804,6 @@ export default function App() {
             farmer={appData.farmer}
             harvest={appData.harvest}
             onNavigate={setCurrentScreen}
-            onGeneratePdf={() => downloadAuditPdf(appData)}
           />
         );
       default:
@@ -811,7 +819,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-green-50">
-      {serverError && (
+      {showGlobalErrorBanner && (
         <div className="p-4">
           <div className="max-w-md mx-auto">
             <Alert variant="destructive" className="border-red-200 bg-red-50">
