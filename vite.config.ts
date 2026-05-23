@@ -96,6 +96,14 @@ export default defineConfig({
       port: 5173,
       open: true,
       allowedHosts: true,
+      watch: {
+        ignored: [
+          '**/.gradle/**',
+          '**/android/.gradle/**',
+          '**/android/build/**',
+          '**/build/**',
+        ],
+      },
       proxy: {
         '/api': {
           target: 'http://localhost:3001',
