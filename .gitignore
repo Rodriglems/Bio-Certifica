@@ -21,6 +21,16 @@ pnpm-debug.log*
 # Cache
 .vite/
 .cache/
+.gradle/
+**/.gradle/
+
+# Android build artifacts
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+*.aab
 
 # Sistema operacional
 .DS_Store
