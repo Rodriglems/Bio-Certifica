@@ -223,8 +223,10 @@ export default function App() {
       setServerError(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao conectar ao servidor";
+      setServerErrorTitle("Erro ao sicronizar")
       setServerError(message);
       console.error("Falha ao carregar dados do servidor:", error);
+      throw error;
     } finally {
       setIsReloading(false);
     }
@@ -830,10 +832,9 @@ export default function App() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => void reloadFromServer()}
+                  onClick={() => void reloadFromServer().catch(() => {})}
                   disabled={isReloading}
-                  className="border-red-200 text-red-700 hover:bg-red-50"
-                >
+                  className="border-red-200 text-red-700 hover:bg-red-50" >
                   {isReloading ? "Tentando..." : "Tentar novamente"}
                 </Button>
               </AlertDescription>
