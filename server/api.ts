@@ -7,7 +7,7 @@
   const app = express();
   app.disable('etag');
 
-  const defaultCorsOrigins = ['http://localhost:5173', 'http://localhost', 'capacitor://localhost'];
+  const defaultCorsOrigins = ['http://localhost:5173', 'http://localhost', 'https://localhost', 'capacitor://localhost'];
   const configuredCorsOrigins = String(process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((value) => value.trim())
