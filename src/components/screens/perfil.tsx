@@ -1,23 +1,39 @@
-import { User, Sprout, MapPin, Phone, Edit } from "lucide-react";
+import { User, Sprout, MapPin, Phone, Edit, Moon, Sun } from "lucide-react";
 import { Screen, Farmer, Harvest } from "../../App";
 
 interface PropsPerfil {
   farmer: Farmer | null;
   harvest: Harvest | null;
   onNavigate: (screen: Screen) => void;
+  isDarkMode: boolean;
+  onToggleDarkMode: () => void;
 }
 
-export function Perfil({ farmer, harvest, onNavigate }: PropsPerfil) {
+export function Perfil({ farmer, harvest, onNavigate, isDarkMode, onToggleDarkMode }: PropsPerfil) {
+  const ThemeIcon = isDarkMode ? Sun : Moon;
+
   return (
     <div className="min-h-screen p-6 pb-24">
       <div className="max-w-md mx-auto space-y-6">
-        <div className="flex items-center gap-3 pb-4 border-b-2 border-green-100">
-          <div className="bg-green-100 p-3 rounded-full">
-            <User size={28} className="text-green-700" strokeWidth={2.5} />
+        <div className="flex items-center justify-between gap-3 pb-4 border-b-2 border-green-100">
+          <div className="flex items-center gap-3">
+            <div className="bg-green-100 p-3 rounded-full">
+              <User size={28} className="text-green-700" strokeWidth={2.5} />
+            </div>
+            <h1 className="text-2xl font-bold text-green-800">
+              Perfil
+            </h1>
           </div>
-          <h1 className="text-2xl font-bold text-green-800">
-            Perfil
-          </h1>
+
+          <button
+            type="button"
+            onClick={onToggleDarkMode}
+            aria-label={isDarkMode ? "Ativar modo claro" : "Ativar modo escuro"}
+            title={isDarkMode ? "Ativar modo claro" : "Ativar modo escuro"}
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border-2 border-green-200 bg-white text-green-700 shadow-lg transition-colors hover:bg-green-50"
+          >
+            <ThemeIcon size={22} strokeWidth={2.5} />
+          </button>
         </div>
 
         {/* Dados do Agricultor */}

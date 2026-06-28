@@ -163,6 +163,9 @@ function isValidDailyRecord(record: Partial<DailyRecord> | null | undefined): re
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("splash");
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return window.localStorage.getItem("biocertifica-theme") !== "light";
+  });
   
   const currentYear = new Date().getFullYear();
 
@@ -176,6 +179,11 @@ export default function App() {
 
   const [serverErrorTitle, setServerErrorTitle] = useState("Erro ao sincronizar");
   const [isReloading, setIsReloading] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDarkMode);
+    window.localStorage.setItem("biocertifica-theme", isDarkMode ? "dark" : "light");
+  }, [isDarkMode]);
 
   const reportServerError = useCallback((error: unknown) => {
     const message =
@@ -806,6 +814,8 @@ export default function App() {
             farmer={appData.farmer}
             harvest={appData.harvest}
             onNavigate={setCurrentScreen}
+            isDarkMode={isDarkMode}
+            onToggleDarkMode={() => setIsDarkMode((current) => !current)}
           />
         );
       default:
@@ -820,7 +830,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50 to-green-50">
+    <div className="min-h-screen bg-background text-foreground">
       {showGlobalErrorBanner && (
         <div className="p-4">
           <div className="max-w-md mx-auto">
