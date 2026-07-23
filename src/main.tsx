@@ -5,7 +5,7 @@ import "./index.css";
 
 document.documentElement.classList.toggle(
   "dark",
-  window.localStorage.getItem("biocertifica-theme") !== "light",
+  window.localStorage.getItem("biocertifica-theme") === "dark",
 );
 
 registerSW({ immediate: true });

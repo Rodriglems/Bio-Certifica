@@ -164,7 +164,7 @@ function isValidDailyRecord(record: Partial<DailyRecord> | null | undefined): re
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>("splash");
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    return window.localStorage.getItem("biocertifica-theme") !== "light";
+    return window.localStorage.getItem("biocertifica-theme") === "dark";
   });
   
   const currentYear = new Date().getFullYear();
