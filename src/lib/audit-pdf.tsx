@@ -416,6 +416,6 @@ async function generateAuditPdf(appData: AppData) {
   URL.revokeObjectURL(url);
 }
 
-export function downloadAuditPdf(appData: AppData) {
-  void generateAuditPdf(appData);
+export async function downloadAuditPdf(appData: AppData) {
+  await generateAuditPdf(appData);
 }

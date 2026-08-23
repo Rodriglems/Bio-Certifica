@@ -942,6 +942,7 @@
 
       const registrosSchema = await getRegistrosDiariosColumnMap();
 
+      const recordLimit = Math.min(Math.max(Number(req.query.recordLimit ?? 50), 1), 200);
       const recordsResult = await pool.query<RegistroDiarioRow>(
         (() => {
           const sql = `
@@ -960,16 +961,18 @@
           ${registrosSchema.observacoes} as observacoes
         FROM registros_diarios
         WHERE agricultor_id = $1
-        ORDER BY registrado_em DESC
+        ORDER BY registrado_em DESC, id DESC
+        LIMIT $2
         `.trim();
           debugLog('[app-data] SELECT records SQL', sql);
-          debugLog('[app-data] SELECT records params', [agricultor.id]);
+          debugLog('[app-data] SELECT records params', [agricultor.id, recordLimit + 1]);
           return sql;
         })(),
-        [agricultor.id],
+        [agricultor.id, recordLimit + 1],
       );
 
-      const records = recordsResult.rows.map((row: RegistroDiarioRow) => ({
+      const hasMoreRecords = recordsResult.rows.length > recordLimit;
+      const records = recordsResult.rows.slice(0, recordLimit).map((row: RegistroDiarioRow) => ({
         id: row.id_registro_cliente?.trim() ? row.id_registro_cliente : row.id,
         date: row.registrado_em,
         activityType: row.tipo_atividade,
@@ -993,8 +996,12 @@
           farmer,
           harvest,
           records,
+          recordPagination: {
+            hasMore: hasMoreRecords,
+            nextOffset: records.length,
+          },
           annual,
-          hasPasswordConfigured: passwordResult.rowCount > 0,
+          hasPasswordConfigured: (passwordResult.rowCount ?? 0) > 0,
           user: {
             agricultorId: agricultor.id,
             usuarioAuthId: session.usuarioAuthId,
@@ -1232,6 +1239,7 @@
 
     try {
       const limit = Math.min(Math.max(Number(req.query.limit ?? 50), 1), 200);
+      const offset = Math.max(Number(req.query.offset ?? 0), 0);
 
       type RegistroDiarioRow = {
         id: string;
@@ -1267,13 +1275,14 @@
           ${registrosSchema.observacoes} as observacoes
         FROM registros_diarios
         WHERE agricultor_id = $1
-        ORDER BY registrado_em DESC
-        LIMIT $2
+        ORDER BY registrado_em DESC, id DESC
+        LIMIT $2 OFFSET $3
         `.trim(),
-        [session.agricultorId, limit],
+        [session.agricultorId, limit + 1, offset],
       );
 
-      const records = result.rows.map((row: RegistroDiarioRow) => ({
+      const hasMore = result.rows.length > limit;
+      const records = result.rows.slice(0, limit).map((row: RegistroDiarioRow) => ({
         id: row.id_registro_cliente?.trim() ? row.id_registro_cliente : row.id,
         date: row.registrado_em,
         activityType: row.tipo_atividade,
@@ -1287,7 +1296,7 @@
         observations: row.observacoes ?? undefined,
       }));
 
-      res.json({ ok: true, records });
+      res.json({ ok: true, records, hasMore, nextOffset: offset + records.length });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Erro desconhecido';
       res.status(500).json({ ok: false, error: message });

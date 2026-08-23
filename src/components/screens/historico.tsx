@@ -13,15 +13,28 @@ import { DeleteRecordModal } from "../delete-record-modal";
 interface PropsHistorico {
   records: DailyRecord[];
   onNavigate: (screen: Screen) => void;
-  onGeneratePdf: () => void;
+  onGeneratePdf: () => Promise<void>;
   onDeleteRecord: (recordId: string) => Promise<void>;
+  hasMoreRecords: boolean;
+  isLoadingMoreRecords: boolean;
+  onLoadMoreRecords: () => Promise<void>;
+  isGeneratingPdf: boolean;
   user?: {
     agricultorId: string;
     username: string;
   };
 }
 
-export function Historico({ records, onGeneratePdf, onDeleteRecord, user }: PropsHistorico) {
+export function Historico({
+  records,
+  onGeneratePdf,
+  onDeleteRecord,
+  hasMoreRecords,
+  isLoadingMoreRecords,
+  onLoadMoreRecords,
+  isGeneratingPdf,
+  user,
+}: PropsHistorico) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [recordToDelete, setRecordToDelete] = useState<DailyRecord | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -104,12 +117,13 @@ export function Historico({ records, onGeneratePdf, onDeleteRecord, user }: Prop
             <p className="text-sm text-gray-600 mt-1">Exporte em PDF para auditoria</p>
           </div>
           <button
-            onClick={onGeneratePdf}
-            className="text-green-700 hover:text-green-800 bg-green-50 border-2 border-green-200 px-3 py-2 rounded-xl flex items-center gap-2"
+            onClick={() => void onGeneratePdf()}
+            disabled={isGeneratingPdf}
+            className="text-green-700 hover:text-green-800 bg-green-50 border-2 border-green-200 px-3 py-2 rounded-xl flex items-center gap-2 disabled:opacity-60"
             title="Gerar PDF"
           >
             <FileDown size={18} />
-            <span className="text-sm font-bold">PDF</span>
+            <span className="text-sm font-bold">{isGeneratingPdf ? "Gerando..." : "PDF"}</span>
           </button>
         </div>
 
@@ -246,6 +260,17 @@ export function Historico({ records, onGeneratePdf, onDeleteRecord, user }: Prop
                 </div>
               </div>
             ))}
+
+            {hasMoreRecords && (
+              <button
+                type="button"
+                onClick={() => void onLoadMoreRecords()}
+                disabled={isLoadingMoreRecords}
+                className="w-full rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 font-semibold text-green-800 hover:bg-green-100 disabled:opacity-60"
+              >
+                {isLoadingMoreRecords ? "Carregando registros..." : "Carregar mais registros"}
+              </button>
+            )}
 
             {deleteError && (
               <p className="text-sm text-destructive text-center">{deleteError}</p>
