@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Sprout, History as HistoricoIcone, User, Activity, Menu, LogOut, KeyRound } from "lucide-react";
 import { Screen, Farmer, Harvest, DailyRecord } from "../../App";
-import Logo from "../../assets/imagens/Logo_robo_biocertifica03.png";
+import Logo from "../../assets/imagens/Logo_robo_biocertifica03.webp";
 import {
   BarChart,
   Bar,

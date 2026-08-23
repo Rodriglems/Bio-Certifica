@@ -1,5 +1,5 @@
 import { Screen } from "../../App";
-import Logo from "../../assets/imagens/Logo_robo_biocertifica03.png";
+import Logo from "../../assets/imagens/Logo_robo_biocertifica03.webp";
 
 interface PropsTelaInicial {
   onNavigate: (screen: Screen) => void;
