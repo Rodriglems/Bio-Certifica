@@ -179,6 +179,11 @@ export const api = {
     return result.data;
   },
 
+  async getPropertyPhoto() {
+    const result = await request<{ ok: true; photoDataUrl: string | null }>("/api/agricultor/foto");
+    return result.photoDataUrl ?? undefined;
+  },
+
   async registerFarmerAccount(payload: Farmer & { username: string; email?: string; password: string }) {
     const result = await request<AuthResponse & { agricultorId: string }>("/api/agricultor", {
       method: "POST",

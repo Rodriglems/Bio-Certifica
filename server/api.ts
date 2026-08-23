@@ -329,7 +329,6 @@
     tamanho_propriedade: string | null;
     producoes: string | null;
     como_chegar_propriedade: string | null;
-    foto_propriedade_data_url: string | null;
   };
 
   type UsuarioAuthRow = {
@@ -351,8 +350,7 @@
         telefone,
         tamanho_propriedade,
         producoes,
-        como_chegar_propriedade,
-        foto_propriedade_data_url
+        como_chegar_propriedade
       FROM agricultores
       WHERE id = $1
       `.trim(),
@@ -630,6 +628,22 @@
     }
   });
 
+  app.get('/api/agricultor/foto', async (req, res) => {
+    const session = await requireSession(req, res);
+    if (!session) return;
+
+    try {
+      const result = await pool.query<{ foto_propriedade_data_url: string | null }>(
+        'SELECT foto_propriedade_data_url FROM agricultores WHERE id = $1',
+        [session.agricultorId],
+      );
+      res.json({ ok: true, photoDataUrl: result.rows[0]?.foto_propriedade_data_url ?? null });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro desconhecido';
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
   app.post('/api/login', async (req, res) => {
     const { identifier, password } = req.body ?? {};
 
@@ -876,7 +890,6 @@
         propertySize: agricultor.tamanho_propriedade ?? undefined,
         produces: agricultor.producoes ?? undefined,
         accessDirections: agricultor.como_chegar_propriedade ?? undefined,
-        propertyPhotoDataUrl: agricultor.foto_propriedade_data_url ?? undefined,
       };
 
       const harvestResult = await pool.query(

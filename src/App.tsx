@@ -194,6 +194,7 @@ export default function App() {
   const [isReloading, setIsReloading] = useState(false);
   const [isLoadingMoreRecords, setIsLoadingMoreRecords] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isPropertyPhotoLoaded, setIsPropertyPhotoLoaded] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDarkMode);
@@ -225,6 +226,7 @@ export default function App() {
     setIsReloading(true);
     try {
       const data = await api.getAppData(RECORDS_PAGE_SIZE);
+      setIsPropertyPhotoLoaded(false);
       setAppData((prev) => ({
         ...prev,
         farmer: data.farmer,
@@ -314,6 +316,40 @@ export default function App() {
   }, [reloadFromServer]);
 
   useEffect(() => {
+    if (
+      isPropertyPhotoLoaded
+      || currentScreen !== "profile"
+      || !appData.auth?.isLoggedIn
+      || !appData.farmer
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPropertyPhoto = async () => {
+      try {
+        const propertyPhotoDataUrl = await api.getPropertyPhoto();
+        if (!cancelled) {
+          setAppData((prev) => prev.farmer
+            ? { ...prev, farmer: { ...prev.farmer, propertyPhotoDataUrl } }
+            : prev,
+          );
+        }
+      } catch (error) {
+        if (!cancelled) reportServerError(error);
+      } finally {
+        if (!cancelled) setIsPropertyPhotoLoaded(true);
+      }
+    };
+
+    void loadPropertyPhoto();
+    return () => {
+      cancelled = true;
+    };
+  }, [appData.auth?.isLoggedIn, appData.farmer, currentScreen, isPropertyPhotoLoaded, reportServerError]);
+
+  useEffect(() => {
     if (isRestoringSession) return;
     const isAuthRoute =
       currentScreen === "splash" ||
@@ -338,6 +374,7 @@ export default function App() {
     try {
       if (DEBUG_UI) console.log("[ui] submit farmer", { name: farmer.name, municipality: farmer.municipality });
       await api.saveFarmer(farmer);
+      setIsPropertyPhotoLoaded(true);
       setAppData((prev: AppData) => ({ ...prev, farmer }));
       setServerError(null);
     } catch (error) {
@@ -351,6 +388,7 @@ export default function App() {
       if (DEBUG_UI) console.log("[ui] register farmer account", { username: payload.username, hasEmail: !!payload.email });
       const result = await api.registerFarmerAccount(payload);
       api.setAuthToken(result.token);
+      setIsPropertyPhotoLoaded(true);
       setAppData((prev: AppData) => ({
         ...prev,
         farmer: {
@@ -550,6 +588,7 @@ export default function App() {
   const logout = () => {
     void api.logout();
     api.setAuthToken(null);
+    setIsPropertyPhotoLoaded(false);
     setAppData((prev: AppData) => ({
       ...prev,
       farmer: null,
