@@ -892,7 +892,25 @@
         accessDirections: agricultor.como_chegar_propriedade ?? undefined,
       };
 
-      const harvestResult = await pool.query(
+      type RegistroDiarioRow = {
+        id: string;
+        id_registro_cliente: string | null;
+        registrado_em: string;
+        tipo_atividade: string;
+        local: string;
+        destino: string;
+        producao: unknown | null;
+        detalhes_destino: unknown | null;
+        custos: unknown | null;
+        mao_de_obra: unknown;
+        condicoes_campo: unknown;
+        observacoes: string | null;
+      };
+
+      const recordLimit = Math.min(Math.max(Number(req.query.recordLimit ?? 50), 1), 200);
+      // Após identificar o agricultor, estas consultas não dependem entre si.
+      // Executá-las em paralelo reduz a latência total para a da consulta mais lenta.
+      const harvestPromise = pool.query(
         `
         SELECT cultura_principal, tipo_semente, sistema_cultivo, area_plantada
         FROM safras
@@ -902,6 +920,53 @@
         `.trim(),
         [agricultor.id],
       );
+
+      const annualPromise = pool.query(
+        `
+        SELECT ano, teve_mudancas, detalhes_mudancas
+        FROM respostas_anuais
+        WHERE agricultor_id = $1
+        `.trim(),
+        [agricultor.id],
+      );
+
+      const recordsPromise = getRegistrosDiariosColumnMap().then((registrosSchema) => {
+        const sql = `
+          SELECT
+            id,
+            id_registro_cliente,
+            registrado_em,
+            tipo_atividade,
+            ${registrosSchema.local} as local,
+            ${registrosSchema.destino} as destino,
+            ${registrosSchema.producao} as producao,
+            detalhes_destino,
+            ${registrosSchema.custos} as custos,
+            ${registrosSchema.maoDeObra} as mao_de_obra,
+            condicoes_campo,
+            ${registrosSchema.observacoes} as observacoes
+          FROM registros_diarios
+          WHERE agricultor_id = $1
+          ORDER BY registrado_em DESC, id DESC
+          LIMIT $2
+        `.trim();
+        debugLog('[app-data] SELECT records SQL', sql);
+        debugLog('[app-data] SELECT records params', [agricultor.id, recordLimit + 1]);
+        return pool.query<RegistroDiarioRow>(sql, [agricultor.id, recordLimit + 1]);
+      });
+
+      const passwordPromise = pool.query(
+        'SELECT 1 FROM usuarios_auth WHERE agricultor_id = $1 AND password_hash IS NOT NULL',
+        [agricultor.id],
+      );
+
+      const [harvestResult, annualResult, recordsResult, passwordResult] = await Promise.all([
+        harvestPromise,
+        annualPromise,
+        recordsPromise,
+        passwordPromise,
+      ]);
+
       const harvestRow = harvestResult.rows[0] as
         | {
             cultura_principal: string;
@@ -920,15 +985,6 @@
           }
         : null;
 
-      const annualResult = await pool.query(
-        `
-        SELECT ano, teve_mudancas, detalhes_mudancas
-        FROM respostas_anuais
-        WHERE agricultor_id = $1
-        `.trim(),
-        [agricultor.id],
-      );
-
       const annual: Record<string, { year: number; hadChanges: boolean; changesDetails?: string }> = {};
       for (const row of annualResult.rows as Array<{ ano: number; teve_mudancas: boolean; detalhes_mudancas: string | null }>) {
         annual[String(row.ano)] = {
@@ -937,52 +993,6 @@
           changesDetails: row.detalhes_mudancas ?? undefined,
         };
       }
-
-      type RegistroDiarioRow = {
-        id: string;
-        id_registro_cliente: string | null;
-        registrado_em: string;
-        tipo_atividade: string;
-        local: string;
-        destino: string;
-        producao: unknown | null;
-        detalhes_destino: unknown | null;
-        custos: unknown | null;
-        mao_de_obra: unknown;
-        condicoes_campo: unknown;
-        observacoes: string | null;
-      };
-
-      const registrosSchema = await getRegistrosDiariosColumnMap();
-
-      const recordLimit = Math.min(Math.max(Number(req.query.recordLimit ?? 50), 1), 200);
-      const recordsResult = await pool.query<RegistroDiarioRow>(
-        (() => {
-          const sql = `
-        SELECT
-          id,
-          id_registro_cliente,
-          registrado_em,
-          tipo_atividade,
-          ${registrosSchema.local} as local,
-          ${registrosSchema.destino} as destino,
-          ${registrosSchema.producao} as producao,
-          detalhes_destino,
-          ${registrosSchema.custos} as custos,
-          ${registrosSchema.maoDeObra} as mao_de_obra,
-          condicoes_campo,
-          ${registrosSchema.observacoes} as observacoes
-        FROM registros_diarios
-        WHERE agricultor_id = $1
-        ORDER BY registrado_em DESC, id DESC
-        LIMIT $2
-        `.trim();
-          debugLog('[app-data] SELECT records SQL', sql);
-          debugLog('[app-data] SELECT records params', [agricultor.id, recordLimit + 1]);
-          return sql;
-        })(),
-        [agricultor.id, recordLimit + 1],
-      );
 
       const hasMoreRecords = recordsResult.rows.length > recordLimit;
       const records = recordsResult.rows.slice(0, recordLimit).map((row: RegistroDiarioRow) => ({
@@ -998,10 +1008,6 @@
         fieldConditions: row.condicoes_campo,
         observations: row.observacoes ?? undefined,
       }));
-
-      const passwordResult = await pool.query('SELECT 1 FROM usuarios_auth WHERE agricultor_id = $1 AND password_hash IS NOT NULL', [
-        agricultor.id,
-      ]);
 
       res.json({
         ok: true,
