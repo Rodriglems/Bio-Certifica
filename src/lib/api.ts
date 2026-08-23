@@ -149,6 +149,10 @@ export type AppDataResponse = {
     farmer: Farmer | null;
     harvest: Harvest | null;
     records: DailyRecord[];
+    recordPagination: {
+      hasMore: boolean;
+      nextOffset: number;
+    };
     annual: Record<string, RespostasAnuais>;
     hasPasswordConfigured: boolean;
     user: {
@@ -168,8 +172,10 @@ export const api = {
     return authToken;
   },
 
-  async getAppData() {
-    const result = await request<AppDataResponse>("/api/app-data");
+  async getAppData(recordLimit = 50) {
+    const result = await request<AppDataResponse>(
+      `/api/app-data?recordLimit=${encodeURIComponent(String(recordLimit))}`,
+    );
     return result.data;
   },
 
@@ -268,11 +274,16 @@ export const api = {
     });
   },
 
-  async listDailyRecords(limit = 50) {
-    const result = await request<{ ok: true; records: DailyRecord[] }>(
-      `/api/registros-diarios?limit=${encodeURIComponent(String(limit))}`,
+  async listDailyRecords(limit = 50, offset = 0) {
+    const result = await request<{
+      ok: true;
+      records: DailyRecord[];
+      hasMore: boolean;
+      nextOffset: number;
+    }>(
+      `/api/registros-diarios?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
     );
-    return result.records;
+    return result;
   },
 
   async deleteDailyRecord(id: string) {

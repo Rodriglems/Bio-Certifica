@@ -1,13 +1,9 @@
 import 'dotenv/config';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { pool } from './db';
 
 type MigrationRow = { filename: string };
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function ensureMigrationsTable() {
   await pool.query(
@@ -46,7 +42,9 @@ async function applyMigration(filename: string, sql: string) {
 }
 
 async function main() {
-  const migrationsDir = path.join(__dirname, 'migrations');
+  // Os scripts npm são executados a partir da raiz do projeto. Usar o diretório
+  // atual mantém este arquivo compatível tanto com CommonJS quanto com ESM.
+  const migrationsDir = path.join(process.cwd(), 'server', 'migrations');
 
   await ensureMigrationsTable();
 

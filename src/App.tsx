@@ -1,29 +1,32 @@
-import { useState, useEffect, useCallback } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback } from "react";
 import { TelaInicial } from "./components/screens/tela-inicial";
-import { CadastroAgricultor } from "./components/screens/cadastro-agricultor";
-import { CadastroSafra } from "./components/screens/cadastro-safra";
-import { MenuPrincipal } from "./components/screens/menu-principal";
-import { TipoAtividade } from "./components/screens/tipo-atividade";
-import { Producao } from "./components/screens/producao";
-import { LocalProducao } from "./components/screens/local-producao";
-import { DestinoProducao } from "./components/screens/destino-producao";
-import { DetalhesDestino } from "./components/screens/detalhes-destino";
-import { Custos } from "./components/screens/custos";
-import { MaoDeObra } from "./components/screens/mao-de-obra";
-import { CondicoesCampo } from "./components/screens/condicoes-campo";
-import { Observacoes } from "./components/screens/observacoes";
-import { Confirmacao } from "./components/screens/confirmacao";
-import { Historico } from "./components/screens/historico";
-import { Perfil } from "./components/screens/perfil";
 import { BottomNav } from "./components/bottom-nav";
-import { Entrar } from "./components/screens/entrar";
-import { EsqueciSenha } from "./components/screens/esqueci-senha";
-import { ConfirmarRegistro } from "./components/screens/confirmar-registro";
-import { PerguntasAnuais, type RespostasAnuais } from "./components/screens/perguntas-anuais";
+import type { RespostasAnuais } from "./components/screens/perguntas-anuais";
 import { downloadAuditPdf } from "./lib/audit-pdf";
 import { api, ApiError } from "./lib/api";
 import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
+
+// As telas fora da abertura são baixadas somente quando o usuário as acessa.
+const CadastroAgricultor = lazy(() => import("./components/screens/cadastro-agricultor").then(({ CadastroAgricultor }) => ({ default: CadastroAgricultor })));
+const CadastroSafra = lazy(() => import("./components/screens/cadastro-safra").then(({ CadastroSafra }) => ({ default: CadastroSafra })));
+const MenuPrincipal = lazy(() => import("./components/screens/menu-principal").then(({ MenuPrincipal }) => ({ default: MenuPrincipal })));
+const TipoAtividade = lazy(() => import("./components/screens/tipo-atividade").then(({ TipoAtividade }) => ({ default: TipoAtividade })));
+const Producao = lazy(() => import("./components/screens/producao").then(({ Producao }) => ({ default: Producao })));
+const LocalProducao = lazy(() => import("./components/screens/local-producao").then(({ LocalProducao }) => ({ default: LocalProducao })));
+const DestinoProducao = lazy(() => import("./components/screens/destino-producao").then(({ DestinoProducao }) => ({ default: DestinoProducao })));
+const DetalhesDestino = lazy(() => import("./components/screens/detalhes-destino").then(({ DetalhesDestino }) => ({ default: DetalhesDestino })));
+const Custos = lazy(() => import("./components/screens/custos").then(({ Custos }) => ({ default: Custos })));
+const MaoDeObra = lazy(() => import("./components/screens/mao-de-obra").then(({ MaoDeObra }) => ({ default: MaoDeObra })));
+const CondicoesCampo = lazy(() => import("./components/screens/condicoes-campo").then(({ CondicoesCampo }) => ({ default: CondicoesCampo })));
+const Observacoes = lazy(() => import("./components/screens/observacoes").then(({ Observacoes }) => ({ default: Observacoes })));
+const Confirmacao = lazy(() => import("./components/screens/confirmacao").then(({ Confirmacao }) => ({ default: Confirmacao })));
+const Historico = lazy(() => import("./components/screens/historico").then(({ Historico }) => ({ default: Historico })));
+const Perfil = lazy(() => import("./components/screens/perfil").then(({ Perfil }) => ({ default: Perfil })));
+const Entrar = lazy(() => import("./components/screens/entrar").then(({ Entrar }) => ({ default: Entrar })));
+const EsqueciSenha = lazy(() => import("./components/screens/esqueci-senha").then(({ EsqueciSenha }) => ({ default: EsqueciSenha })));
+const ConfirmarRegistro = lazy(() => import("./components/screens/confirmar-registro").then(({ ConfirmarRegistro }) => ({ default: ConfirmarRegistro })));
+const PerguntasAnuais = lazy(() => import("./components/screens/perguntas-anuais").then(({ PerguntasAnuais }) => ({ default: PerguntasAnuais })));
 
 export type Screen = 
   | "splash"
@@ -109,6 +112,10 @@ export interface AppData {
   farmer: Farmer | null;
   harvest: Harvest | null;
   records: DailyRecord[];
+  recordPagination: {
+    hasMore: boolean;
+    nextOffset: number;
+  };
   currentRecord: Partial<DailyRecord>;
   annual?: Record<string, RespostasAnuais>;
   auth?: {
@@ -128,6 +135,10 @@ const DEFAULT_APP_DATA: AppData = {
   farmer: null,
   harvest: null,
   records: [],
+  recordPagination: {
+    hasMore: false,
+    nextOffset: 0,
+  },
   currentRecord: {},
   annual: {},
   auth: {
@@ -143,6 +154,8 @@ const DEBUG_UI = ["1", "true", "yes", "on"].includes(
 const TEST_LAST_STEP = ["1", "true", "yes", "on"].includes(
   String((import.meta.env as any).VITE_TEST_LAST_STEP ?? "").toLowerCase(),
 );
+
+const RECORDS_PAGE_SIZE = 50;
 
 function isValidDailyRecord(record: Partial<DailyRecord> | null | undefined): record is DailyRecord {
   if (!record) return false;
@@ -179,6 +192,8 @@ export default function App() {
 
   const [serverErrorTitle, setServerErrorTitle] = useState("Erro ao sincronizar");
   const [isReloading, setIsReloading] = useState(false);
+  const [isLoadingMoreRecords, setIsLoadingMoreRecords] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDarkMode);
@@ -209,12 +224,13 @@ export default function App() {
   const reloadFromServer = useCallback(async () => {
     setIsReloading(true);
     try {
-      const data = await api.getAppData();
+      const data = await api.getAppData(RECORDS_PAGE_SIZE);
       setAppData((prev) => ({
         ...prev,
         farmer: data.farmer,
         harvest: data.harvest,
         records: data.records,
+        recordPagination: data.recordPagination,
         annual: data.annual,
         auth: {
           ...(prev.auth ?? { isLoggedIn: false, hasPasswordConfigured: false }),
@@ -609,6 +625,10 @@ export default function App() {
     setAppData((prev: AppData) => ({
       ...prev,
       records: prev.records.filter((record) => record.id !== recordId),
+      recordPagination: {
+        ...prev.recordPagination,
+        nextOffset: Math.max(0, prev.recordPagination.nextOffset - 1),
+      },
     }));
 
     try {
@@ -621,6 +641,67 @@ export default function App() {
       }));
       reportServerError(error);
       throw error;
+    }
+  };
+
+  const loadMoreRecords = async () => {
+    if (isLoadingMoreRecords || !appData.recordPagination.hasMore) return;
+
+    setIsLoadingMoreRecords(true);
+    try {
+      const page = await api.listDailyRecords(RECORDS_PAGE_SIZE, appData.recordPagination.nextOffset);
+      setAppData((prev) => {
+        const existingIds = new Set(prev.records.map((record) => record.id));
+        const newRecords = page.records.filter((record) => !existingIds.has(record.id));
+        return {
+          ...prev,
+          records: [...prev.records, ...newRecords],
+          recordPagination: {
+            hasMore: page.hasMore,
+            nextOffset: page.nextOffset,
+          },
+        };
+      });
+      setServerError(null);
+    } catch (error) {
+      reportServerError(error);
+      throw error;
+    } finally {
+      setIsLoadingMoreRecords(false);
+    }
+  };
+
+  const generateAuditPdf = async () => {
+    if (isGeneratingPdf) return;
+
+    setIsGeneratingPdf(true);
+    try {
+      let records = appData.records;
+      let { hasMore, nextOffset } = appData.recordPagination;
+
+      // O PDF continua completo, mas os registros antigos só são baixados quando solicitado.
+      while (hasMore) {
+        const page = await api.listDailyRecords(RECORDS_PAGE_SIZE, nextOffset);
+        const knownIds = new Set(records.map((record) => record.id));
+        records = [...records, ...page.records.filter((record) => !knownIds.has(record.id))];
+        hasMore = page.hasMore;
+        nextOffset = page.nextOffset;
+      }
+
+      if (records.length !== appData.records.length) {
+        setAppData((prev) => ({
+          ...prev,
+          records,
+          recordPagination: { hasMore, nextOffset },
+        }));
+      }
+      await downloadAuditPdf({ ...appData, records, recordPagination: { hasMore, nextOffset } });
+      setServerError(null);
+    } catch (error) {
+      reportServerError(error);
+      throw error;
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -804,8 +885,12 @@ export default function App() {
           <Historico
             records={appData.records}
             onNavigate={setCurrentScreen}
-            onGeneratePdf={() => downloadAuditPdf(appData)}
+            onGeneratePdf={generateAuditPdf}
             onDeleteRecord={deleteRecord}
+            hasMoreRecords={appData.recordPagination.hasMore}
+            isLoadingMoreRecords={isLoadingMoreRecords}
+            onLoadMoreRecords={loadMoreRecords}
+            isGeneratingPdf={isGeneratingPdf}
           />
         );
       case "profile":
@@ -852,7 +937,15 @@ export default function App() {
           </div>
         </div>
       )}
-      {renderScreen()}
+      <Suspense
+        fallback={
+          <div className="min-h-screen flex items-center justify-center bg-green-50 text-green-800">
+            Carregando...
+          </div>
+        }
+      >
+        {renderScreen()}
+      </Suspense>
       {showBottomNav && <BottomNav currentScreen={currentScreen} onNavigate={handleBottomNavNavigate} />}
     </div>
   );
