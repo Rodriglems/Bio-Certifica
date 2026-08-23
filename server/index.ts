@@ -65,7 +65,7 @@ async function getAgricultorAtual() {
 
 async function hasPinConfigurado(agricultorId: string) {
   const result = await pool.query('SELECT 1 FROM credenciais_acesso WHERE agricultor_id = $1', [agricultorId]);
-  return result.rowCount > 0;
+  return (result.rowCount ?? 0) > 0;
 }
 
 app.get('/api/app-data', async (_req, res) => {
