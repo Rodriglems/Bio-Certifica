@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Sprout, History as HistoricoIcone, User, Activity, Menu, LogOut, KeyRound } from "lucide-react";
+import { User, Menu, LogOut, KeyRound, PlusCircle } from "lucide-react";
 import { Screen, Farmer, Harvest, DailyRecord } from "../../App";
 import Logo from "../../assets/imagens/Logo_robo_biocertifica03.webp";
 import {
@@ -33,59 +33,15 @@ interface PropsMenuPrincipal {
   };
   onLogout: () => void;
   onChangePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
+  onRegister: () => void;
 }
 
-export function MenuPrincipal({ onNavigate, farmer, harvest, records, user, onLogout, onChangePassword }: PropsMenuPrincipal) {
+export function MenuPrincipal({ onNavigate, farmer, harvest, records, user, onLogout, onChangePassword, onRegister }: PropsMenuPrincipal) {
   const [changePinOpen, setChangePinOpen] = useState(false);
   const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [newPinConfirmation, setNewPinConfirmation] = useState("");
   const [changePinError, setChangePinError] = useState<string | null>(null);
-
-  const getRecordDateParts = (value: string) => {
-    const cleaned = String(value ?? "").trim();
-    const brDateMatch = cleaned.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-    if (brDateMatch) {
-      const day = Number(brDateMatch[1]);
-      const month = Number(brDateMatch[2]) - 1;
-      const year = Number(brDateMatch[3]);
-      const recordDate = new Date(Date.UTC(year, month, day));
-      if (Number.isNaN(recordDate.getTime())) return null;
-      return { year, month, day };
-    }
-
-    // 1) Primeiro tenta parsear a string como veio (ex.: Postgres costuma enviar "YYYY-MM-DD HH:mm:ss.sss-03")
-    const direct = new Date(cleaned);
-    if (!Number.isNaN(direct.getTime())) {
-      return {
-        year: direct.getUTCFullYear(),
-        month: direct.getUTCMonth(),
-        day: direct.getUTCDate(),
-      };
-    }
-
-    // 2) Se falhar, normaliza para um ISO aceito pelo JS (ex.: "YYYY-MM-DDTHH:mm:ss.sss-03:00")
-    let normalized = cleaned.includes(" ") && !cleaned.includes("T") ? cleaned.replace(" ", "T") : cleaned;
-
-    // Corrige offsets sem minutos ("-03" -> "-03:00")
-    if (/[+-]\d{2}$/.test(normalized)) {
-      normalized = `${normalized}:00`;
-    }
-
-    // Corrige offsets sem ':' ("-0300" -> "-03:00")
-    const hhmmOffset = normalized.match(/([+-])(\d{2})(\d{2})$/);
-    if (hhmmOffset) {
-      normalized = normalized.replace(/([+-])(\d{2})(\d{2})$/, `$1$2:$3`);
-    }
-
-    const recordDate = new Date(normalized);
-    if (Number.isNaN(recordDate.getTime())) return null;
-    return {
-      year: recordDate.getUTCFullYear(),
-      month: recordDate.getUTCMonth(),
-      day: recordDate.getUTCDate(),
-    };
-  };
 
   const { monthActivities, weeks } = useMemo(() => getWeeklyActivitiesForMonth(records), [records]);
 
@@ -101,17 +57,18 @@ export function MenuPrincipal({ onNavigate, farmer, harvest, records, user, onLo
 
   const lastRecordDate = useMemo(() => {
     if (records.length === 0) return "-";
-    const sorted = [...records].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const lastParts = getRecordDateParts(sorted[0].date);
-    if (!lastParts) return "-";
-    const lastDate = new Date(Date.UTC(lastParts.year, lastParts.month, lastParts.day));
-    return new Intl.DateTimeFormat("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(lastDate);
+    const newest = records.reduce((latest, record) =>
+      new Date(record.date).getTime() > new Date(latest.date).getTime() ? record : latest,
+    );
+    return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" }).format(new Date(newest.date));
   }, [records]);
+
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    const period = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+    const firstName = farmer?.name?.trim().split(/\s+/)[0];
+    return firstName ? `${period}, ${firstName}` : period;
+  }, [farmer?.name]);
 
   const handleSubmitChangePin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,21 +104,11 @@ export function MenuPrincipal({ onNavigate, farmer, harvest, records, user, onLo
 
     <div className="min-h-screen bg-linear-to-br from-green-50 via-white to-emerald-50 p-6 pb-24">
       <div className="max-w-md mx-auto space-y-6">
-        <div className="flex items-center gap-3 pb-4 border-b-2 border-green-100">
-          <div className="rounded-full bg-white p-1.5 shadow-md ring-2 ring-green-100">
-            <img
-              src={Logo}
-              alt="Logo BioCertifica"
-              className="h-12 w-12 rounded-full object-contain bg-white"
-            />
-          </div>
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-green-800">BioCertifica</h1>
-            {farmer?.name && (
-              <p className="text-sm text-gray-600 mt-1">Olá, {farmer.name}</p>
-            )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold text-green-800">Bio Certifica</h1>
             {user?.username && (
-              <p className="text-xs text-gray-500 mt-0.5">Conta: @{user.username}</p>
+              <p className="text-xs text-gray-500">Conta: @{user.username}</p>
             )}
           </div>
 
@@ -211,79 +158,62 @@ export function MenuPrincipal({ onNavigate, farmer, harvest, records, user, onLo
           </DropdownMenu>
         </div>
         
-        {/* Mini Dashboard */}
-        <div className="mb-6 grid grid-cols-1 gap-4">
+        <section className="home-hero">
+          <div className="home-hero__text">
+            <h2 className="home-hero__greeting">{greeting}</h2>
+            <p className="home-hero__question">O que você fez hoje na roça?</p>
+            <button type="button" onClick={onRegister} className="home-hero__cta">
+              <PlusCircle size={22} strokeWidth={2.5} />
+              Registrar hoje
+            </button>
+          </div>
+          <img src={Logo} alt="" className="home-hero__robot" />
+        </section>
+
+        <dl className="home-facts">
+          <div>
+            <dt>Atividades no mês</dt>
+            <dd>{monthActivities}</dd>
+          </div>
+          <div>
+            <dt>Último registro</dt>
+            <dd>{lastRecordDate}</dd>
+          </div>
+          <div>
+            <dt>Cultura principal</dt>
+            <dd>{harvest?.mainCrop || "-"}</dd>
+          </div>
+        </dl>
+
+        {hasChartValues && monthActivities > 0 && (
           <div className="bg-white rounded-2xl shadow-lg p-5">
-            <div className="flex items-center gap-2 text-gray-600">
-              <Sprout size={18} className="text-green-600" />
-              <span className="text-sm">Cultura principal</span>
+            <h2 className="text-base font-bold text-green-800">Atividades por semana</h2>
+            <div className="mt-2 w-full" style={{ height: "110px" }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: "#166534", fontSize: 12 }}
+                    axisLine={{ stroke: "#86efac" }}
+                    tickLine={false}
+                  />
+                  <YAxis hide allowDecimals={false} />
+                  <Tooltip
+                    cursor={{ fill: "#dcfce7" }}
+                    contentStyle={{
+                      backgroundColor: "#f0fdf4",
+                      border: "1px solid #86efac",
+                      borderRadius: "0.75rem",
+                      color: "#166534"
+                    }}
+                    labelStyle={{ color: "#363535ff", fontWeight: 600 }}
+                  />
+                  <Bar dataKey="quantidade" fill="#16a34a" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-            <p className="text-xl font-bold mt-2 text-green-800">
-              {harvest?.mainCrop || "-"}
-            </p>
           </div>
-
-          <div className="bg-white rounded-2xl shadow-lg p-5">
-            <div className="flex items-center gap-2 text-gray-600">
-              <Activity size={18} className="text-green-600" />
-              <span className="text-sm">Atividades no mês</span>
-            </div>
-            <p className="text-xl font-bold mt-2 text-green-800">{monthActivities}</p>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-lg p-5">
-            <div className="flex items-center gap-2 text-gray-600">
-              <HistoricoIcone size={18} className="text-green-600" />
-              <span className="text-sm">Último registro</span>
-            </div>
-            <p className="text-xl font-bold mt-2 text-green-800">{lastRecordDate}</p>
-          </div>
-        </div>
-
-        {/* Gráfico */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-green-800">Atividades por semana</h2>
-          </div>
-
-          <div className="mt-4 w-full h-[250px] min-w-[280px]">
-            {monthActivities === 0 || !hasChartValues ? (
-              <div className="h-[250px] min-w-[280px] flex flex-col items-center justify-center text-center">
-                <p className="text-sm text-gray-600">
-                  Nenhuma atividade registrada neste mês.
-                </p>
-                <p className="text-xs text-gray-500 mt-2">
-                  Comece registrando suas atividades diárias para visualizar o gráfico.
-                </p>
-              </div>
-            ) : (
-              <div style={{ width: '100%', height: '250px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
-                    <XAxis
-                      dataKey="name"
-                      tick={{ fill: "#166534", fontSize: 12 }}
-                      axisLine={{ stroke: "#86efac" }}
-                      tickLine={{ stroke: "#86efac" }}
-                    />
-                    <YAxis hide allowDecimals={false} />
-                    <Tooltip
-                      cursor={{ fill: "#dcfce7" }}
-                      contentStyle={{
-                        backgroundColor: "#f0fdf4",
-                        border: "1px solid #86efac",
-                        borderRadius: "0.75rem",
-                        color: "#166534"
-                      }}
-                      labelStyle={{ color: "#363535ff", fontWeight: 600 }}
-                    />
-                    <Bar dataKey="quantidade" fill="#16a34a" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
       {changePinOpen && (

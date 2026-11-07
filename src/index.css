@@ -227,32 +227,6 @@ body {
     width: 100%;
   }
 
-  .voice-field-input--with-mic,
-  .voice-field-textarea--with-mic {
-    padding-right: 3.5rem;
-  }
-
-  .voice-field-button {
-    position: absolute;
-    right: 0.5rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    border-width: 1px;
-    border-style: solid;
-    border-radius: 0.375rem;
-  }
-
-  .voice-field-button--center {
-    top: 50%;
-    transform: translateY(-50%);
-  }
-
-  .voice-field-button--top {
-    top: 0.5rem;
-  }
 }
 
 @layer utilities {
@@ -362,4 +336,389 @@ body {
   .dark [class~="shadow-2xl"] {
     box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32) !important;
   }
+}
+
+/*
+ * Fora de @layer de propósito: regras sem camada vencem as utilitárias do Tailwind
+ * (como border-gray-300) usadas nos mesmos elementos.
+ */
+
+/* Microfone: só o ícone, dentro do campo, sem caixa em volta. */
+.voice-mic {
+  position: absolute;
+  right: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  color: #15803d;
+  background: transparent;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.voice-mic:hover {
+  background-color: rgb(21 128 61 / 0.1);
+}
+
+.voice-mic:focus-visible {
+  outline: 2px solid #15803d;
+  outline-offset: -2px;
+}
+
+.voice-mic--center {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.voice-mic--top {
+  top: 0.25rem;
+}
+
+.voice-mic--listening,
+.voice-mic--listening:hover {
+  color: #fff;
+  background-color: #dc2626;
+  animation: voice-mic-pulse 1.4s ease-out infinite;
+}
+
+@keyframes voice-mic-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(220 38 38 / 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 0.75rem rgb(220 38 38 / 0);
+  }
+}
+
+.voice-field-status {
+  margin-top: 0.375rem;
+  font-size: 0.875rem;
+  color: #15803d;
+}
+
+.voice-field-status--error {
+  color: #b91c1c;
+}
+
+.dark .voice-mic:not(.voice-mic--listening) {
+  color: #4ade80;
+}
+
+.dark .voice-field-status:not(.voice-field-status--error) {
+  color: #4ade80;
+}
+
+.dark .voice-field-status--error {
+  color: #fca5a5;
+}
+
+/* Opções com foto: a imagem ocupa a direita e se dissolve em direção ao texto. */
+.option-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 4.5rem;
+}
+
+.option-card > :not(.option-photo) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Halo da cor do cartão: mantém o texto legível onde ele encosta na foto. */
+.option-card > span {
+  text-shadow: 0 0 6px #fff, 0 0 2px #fff;
+}
+
+.dark .option-card > span {
+  text-shadow: 0 0 6px #10241b, 0 0 2px #10241b;
+}
+
+form input[type="radio"],
+form input[type="checkbox"] {
+  accent-color: #16a34a;
+}
+
+.option-card:has(input:checked) {
+  border-color: #16a34a;
+  background-color: #f0fdf4;
+  box-shadow: inset 0 0 0 1px #16a34a;
+}
+
+.dark .option-card:has(input:checked) {
+  background-color: #14532d !important;
+}
+
+.option-photo {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 56%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, rgb(0 0 0 / 0.35) 40%, #000 80%);
+  mask-image: linear-gradient(to right, transparent 0%, rgb(0 0 0 / 0.35) 40%, #000 80%);
+}
+
+/* Leitura em voz alta: indica o que pode ser tocado para ouvir. */
+.read-aloud :is(h1, h2, h3, legend, form label)::after {
+  content: "";
+  display: inline-block;
+  flex-shrink: 0;
+  width: 1em;
+  height: 1em;
+  margin-left: 0.4em;
+  vertical-align: -0.125em;
+  background-color: #16a34a;
+  -webkit-mask: var(--speaker-icon) center / contain no-repeat;
+  mask: var(--speaker-icon) center / contain no-repeat;
+}
+
+/* Nas opções o ícone fica sobre a foto, então ganha um fundo próprio para não sumir. */
+.read-aloud form label.option-card::after {
+  position: relative;
+  z-index: 1;
+  width: 2rem;
+  height: 2rem;
+  margin-left: auto;
+  border-radius: 9999px;
+  -webkit-mask: none;
+  mask: none;
+  background: #fff var(--speaker-icon-green) center / 1.25rem no-repeat;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+.read-aloud {
+  --speaker-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M11 5 6 9H3a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h3l5 4a1 1 0 0 0 1.6-.8V5.8A1 1 0 0 0 11 5Zm4.5 3.5a5 5 0 0 1 0 7l-1.4-1.4a3 3 0 0 0 0-4.2l1.4-1.4Zm2.8-2.8a9 9 0 0 1 0 12.6l-1.4-1.4a7 7 0 0 0 0-9.8l1.4-1.4Z'/%3E%3C/svg%3E");
+  --speaker-icon-green: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2315803d'%3E%3Cpath d='M11 5 6 9H3a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h3l5 4a1 1 0 0 0 1.6-.8V5.8A1 1 0 0 0 11 5Zm4.5 3.5a5 5 0 0 1 0 7l-1.4-1.4a3 3 0 0 0 0-4.2l1.4-1.4Zm2.8-2.8a9 9 0 0 1 0 12.6l-1.4-1.4a7 7 0 0 0 0-9.8l1.4-1.4Z'/%3E%3C/svg%3E");
+}
+
+/* Aviso de envio pendente e selo no histórico. */
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.9375rem;
+  line-height: 1.35;
+  color: #713f12;
+  background-color: #fef3c7;
+}
+
+.dark .sync-status {
+  color: #fde68a;
+  background-color: #422006;
+}
+
+.sync-badge {
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #713f12;
+  background-color: #fef3c7;
+}
+
+.setting-switch {
+  flex-shrink: 0;
+  width: 3.25rem;
+  height: 1.875rem;
+  padding: 0.1875rem;
+  border-radius: 9999px;
+  background-color: #9ca3af;
+  transition: background-color 0.15s ease;
+}
+
+.setting-switch > span {
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  background-color: #fff;
+  transition: transform 0.15s ease;
+}
+
+.setting-switch--on {
+  background-color: #16a34a;
+}
+
+.setting-switch--on > span {
+  transform: translateX(1.375rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-mic--listening {
+    animation: none;
+  }
+  .setting-switch > span {
+    transition: none;
+  }
+}
+
+.dark form input[type="radio"],
+.dark form input[type="checkbox"] {
+  color-scheme: dark;
+}
+
+/* Opções curtas lado a lado, para reduzir a rolagem. */
+.option-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.option-row--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.option-row > :not(label) {
+  grid-column: 1 / -1;
+}
+
+.option-card:not(:has(.option-photo)) {
+  min-height: 3.5rem;
+}
+
+.option-row--3 label {
+  gap: 0.5rem;
+  padding-inline: 0.5rem;
+  white-space: nowrap;
+}
+
+.read-aloud .option-row--3 label::after {
+  display: none;
+}
+
+/* Progresso do registro. */
+.form-progress {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #166534;
+}
+
+.form-progress__track {
+  height: 0.375rem;
+  margin-top: 0.25rem;
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: #dcfce7;
+}
+
+.form-progress__fill {
+  height: 100%;
+  border-radius: 9999px;
+  background-color: #16a34a;
+  transition: width 0.2s ease;
+}
+
+.dark .form-progress {
+  color: #86efac;
+}
+
+.dark .form-progress__track {
+  background-color: #14532d;
+}
+
+/* Abertura: o robô e a ação principal. */
+.home-hero {
+  position: relative;
+  overflow: hidden;
+  min-height: 13rem;
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  color: #fff;
+  background-color: #166534;
+}
+
+.home-hero__text {
+  position: relative;
+  z-index: 1;
+  width: 66%;
+}
+
+.home-hero__greeting {
+  font-size: 1.625rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.home-hero__question {
+  margin-top: 0.375rem;
+  font-size: 1rem;
+  line-height: 1.3;
+  color: #dcfce7;
+}
+
+.home-hero__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #14532d;
+  background-color: #fff;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
+}
+
+.home-hero__cta:active {
+  transform: scale(0.97);
+}
+
+.home-hero__cta:focus-visible {
+  outline: 3px solid #fde047;
+  outline-offset: 2px;
+}
+
+.home-hero__robot {
+  position: absolute;
+  right: -1.5rem;
+  bottom: -1.25rem;
+  width: 9rem;
+  height: 9rem;
+  object-fit: contain;
+}
+
+.home-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  padding: 0 0.25rem;
+}
+
+.home-facts dt {
+  font-size: 0.8125rem;
+  color: #4b5563;
+}
+
+.home-facts dd {
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #166534;
+}
+
+.home-facts > div:last-child {
+  grid-column: 1 / -1;
+}
+
+.dark .home-facts dt {
+  color: #a7b5ad;
+}
+
+.dark .home-facts dd {
+  color: #86efac;
+}
+
+.dark .recharts-cartesian-axis-tick-value {
+  fill: #86efac;
 }
