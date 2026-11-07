@@ -1060,6 +1060,7 @@
         mao_de_obra: unknown;
         condicoes_campo: unknown;
         observacoes: string | null;
+        lancado_em: string | null;
       };
 
       const recordLimit = Math.min(Math.max(Number(req.query.recordLimit ?? 50), 1), 200);
@@ -1099,9 +1100,10 @@
             ${registrosSchema.custos} as custos,
             ${registrosSchema.maoDeObra} as mao_de_obra,
             condicoes_campo,
-            ${registrosSchema.observacoes} as observacoes
+            ${registrosSchema.observacoes} as observacoes,
+            lancado_em
           FROM registros_diarios
-          WHERE agricultor_id = $1
+          WHERE agricultor_id = $1 AND excluido_em IS NULL
           ORDER BY registrado_em DESC, id DESC
           LIMIT $2
         `.trim();
@@ -1162,6 +1164,7 @@
         labor: row.mao_de_obra,
         fieldConditions: row.condicoes_campo,
         observations: row.observacoes ?? undefined,
+        loggedAt: row.lancado_em ?? undefined,
       }));
 
       res.json({
@@ -1317,6 +1320,7 @@
         labor,
         fieldConditions,
         observations,
+        loggedAt,
       } = req.body ?? {};
 
       if (!date || !activityType || !location || !destination || !labor || !fieldConditions) {
@@ -1333,6 +1337,9 @@
         return;
       }
 
+      const parsedLoggedAt = new Date(String(loggedAt ?? ''));
+      const lancadoEm = Number.isNaN(parsedLoggedAt.getTime()) ? new Date() : parsedLoggedAt;
+
       const registrosSchema = await getRegistrosDiariosColumnMap();
 
       const registrosEntries: Array<{ column: string; value: unknown; jsonb?: boolean }> = [
@@ -1342,6 +1349,8 @@
           ? [{ column: 'registrador_usuario_id', value: session.usuarioAuthId }]
           : []),
         { column: 'registrado_em', value: registradoEm.toISOString() },
+        // Horário em que foi lançado no celular, que pode ser bem antes do envio se estava offline.
+        { column: 'lancado_em', value: lancadoEm.toISOString() },
         { column: 'tipo_atividade', value: String(activityType) },
         { column: registrosSchema.local, value: String(location) },
         { column: registrosSchema.destino, value: String(destination) },
@@ -1428,6 +1437,7 @@
         mao_de_obra: unknown;
         condicoes_campo: unknown;
         observacoes: string | null;
+        lancado_em: string | null;
       };
 
       const registrosSchema = await getRegistrosDiariosColumnMap();
@@ -1446,9 +1456,10 @@
           ${registrosSchema.custos} as custos,
           ${registrosSchema.maoDeObra} as mao_de_obra,
           condicoes_campo,
-          ${registrosSchema.observacoes} as observacoes
+          ${registrosSchema.observacoes} as observacoes,
+          lancado_em
         FROM registros_diarios
-        WHERE agricultor_id = $1
+        WHERE agricultor_id = $1 AND excluido_em IS NULL
         ORDER BY registrado_em DESC, id DESC
         LIMIT $2 OFFSET $3
         `.trim(),
@@ -1468,9 +1479,77 @@
         labor: row.mao_de_obra,
         fieldConditions: row.condicoes_campo,
         observations: row.observacoes ?? undefined,
+        loggedAt: row.lancado_em ?? undefined,
       }));
 
       res.json({ ok: true, records, hasMore, nextOffset: offset + records.length });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro desconhecido';
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  // Dados que o caderno de campo precisa além dos registros ativos.
+  app.get('/api/auditoria', async (req, res) => {
+    const session = await requireSession(req, res);
+    if (!session) return;
+
+    try {
+      const registrosSchema = await getRegistrosDiariosColumnMap();
+      const [deletedResult, harvestResult] = await Promise.all([
+        pool.query<{
+          id: string;
+          id_registro_cliente: string | null;
+          registrado_em: string;
+          tipo_atividade: string;
+          producao: { product?: string } | null;
+          excluido_em: string;
+          motivo_exclusao: string | null;
+        }>(
+          `
+          SELECT id, id_registro_cliente, registrado_em, tipo_atividade,
+                 ${registrosSchema.producao} as producao, excluido_em, motivo_exclusao
+          FROM registros_diarios
+          WHERE agricultor_id = $1 AND excluido_em IS NOT NULL
+          ORDER BY excluido_em
+          `.trim(),
+          [session.agricultorId],
+        ),
+        pool.query<{
+          cultura_principal: string;
+          tipo_semente: string;
+          sistema_cultivo: string;
+          area_plantada: string;
+          criado_em: string;
+        }>(
+          `
+          SELECT cultura_principal, tipo_semente, sistema_cultivo, area_plantada, criado_em
+          FROM safras
+          WHERE agricultor_id = $1
+          ORDER BY criado_em
+          `.trim(),
+          [session.agricultorId],
+        ),
+      ]);
+
+      res.json({
+        ok: true,
+        deletedRecords: deletedResult.rows.map((row) => ({
+          id: row.id_registro_cliente?.trim() ? row.id_registro_cliente : row.id,
+          date: row.registrado_em,
+          activityType: row.tipo_atividade,
+          product: row.producao?.product,
+          deletedAt: row.excluido_em,
+          reason: row.motivo_exclusao,
+        })),
+        harvests: harvestResult.rows.map((row) => ({
+          mainCrop: row.cultura_principal,
+          seedType: row.tipo_semente,
+          cultivationSystem: row.sistema_cultivo,
+          plantedArea: row.area_plantada,
+          createdAt: row.criado_em,
+        })),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Erro desconhecido';
       res.status(500).json({ ok: false, error: message });
@@ -1488,13 +1567,22 @@
         return;
       }
 
+      const reason = normalizeText(req.body?.reason);
+      if (reason.length < 3) {
+        res.status(400).json({ ok: false, error: 'Informe o motivo da exclusão' });
+        return;
+      }
+
+      // Para a auditoria, excluir só marca o registro: o original e o motivo continuam guardados.
       const result = await pool.query(
         `
-        DELETE FROM registros_diarios
+        UPDATE registros_diarios
+        SET excluido_em = now(), motivo_exclusao = $3
         WHERE agricultor_id = $1
           AND (id_registro_cliente = $2 OR id::text = $2)
+          AND excluido_em IS NULL
         `.trim(),
-        [session.agricultorId, id],
+        [session.agricultorId, id, reason],
       );
 
       if (result.rowCount === 0) {
