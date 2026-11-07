@@ -44,3 +44,6 @@ Thumbs.db
 # Cloudflare tunnel (se existir local)
 cloudflared*.log
 *.pem
+
+# APKs gerados por scripts/build-apk.mjs
+apk/
