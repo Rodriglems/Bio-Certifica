@@ -1,16 +1,17 @@
-import { CheckCircle, PlusCircle, Home } from "lucide-react";
+import { AlertCircle, Loader2, PlusCircle, Home } from "lucide-react";
 import { Screen } from "../../App";
+import Logo from "../../assets/imagens/Logo_robo_biocertifica03.webp";
 import { useEffect, useRef, useState } from "react";
 
 interface PropsConfirmacao {
   onNavigate: (screen: Screen) => void;
-  onSave: () => Promise<{ ok: boolean; message?: string }>;
+  onSave: () => Promise<{ ok: boolean; queued?: boolean; message?: string }>;
   onReset: () => void;
 }
 
 export function Confirmacao({ onNavigate, onSave, onReset }: PropsConfirmacao) {
   const hasSavedRef = useRef(false);
-  const [status, setStatus] = useState<"saving" | "success" | "error">("saving");
+  const [status, setStatus] = useState<"saving" | "success" | "queued" | "error">("saving");
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,7 +22,7 @@ export function Confirmacao({ onNavigate, onSave, onReset }: PropsConfirmacao) {
       setLocalError(null);
       const result = await onSave();
       if (result.ok) {
-        setStatus("success");
+        setStatus(result.queued ? "queued" : "success");
         setLocalError(null);
       } else {
         setStatus("error");
@@ -45,16 +46,18 @@ export function Confirmacao({ onNavigate, onSave, onReset }: PropsConfirmacao) {
       <div className="max-w-md w-full">
         <div className="bg-white rounded-2xl shadow-2xl p-8 text-center space-y-6">
           <div className="flex justify-center">
-            <div className="bg-green-100 rounded-full p-6">
-              <CheckCircle size={64} className="text-green-600" strokeWidth={2} />
-            </div>
+            {status === "saving" && <Loader2 size={64} className="text-green-600 animate-spin" />}
+            {status === "error" && <AlertCircle size={64} className="text-red-600" strokeWidth={2} />}
+            {(status === "success" || status === "queued") && (
+              <img src={Logo} alt="" className="h-36 w-36 object-contain" />
+            )}
           </div>
 
           <div className="space-y-2">
             {status === "saving" && (
               <>
                 <h1 className="text-3xl font-bold text-green-800">Salvando...</h1>
-                <p className="text-lg text-gray-600">Aguarde a confirmação do servidor.</p>
+                <p className="text-lg text-gray-600">Aguarde um momento.</p>
               </>
             )}
 
@@ -65,10 +68,17 @@ export function Confirmacao({ onNavigate, onSave, onReset }: PropsConfirmacao) {
               </>
             )}
 
+            {status === "queued" && (
+              <>
+                <h1 className="text-3xl font-bold text-green-800">Registro guardado no celular</h1>
+                <p className="text-lg text-gray-600">O envio é automático quando a internet voltar. Você não precisa fazer mais nada.</p>
+              </>
+            )}
+
             {status === "error" && (
               <>
-                <h1 className="text-3xl font-bold text-red-800">Falha ao salvar</h1>
-                <p className="text-lg text-gray-600">O registro não foi gravado no banco.</p>
+                <h1 className="text-3xl font-bold text-red-800">Registro não enviado</h1>
+                <p className="text-lg text-gray-600">O servidor não aceitou este registro.</p>
               </>
             )}
           </div>

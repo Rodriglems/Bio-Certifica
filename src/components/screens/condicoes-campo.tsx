@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { OptionPhoto } from "../option-photo";
 import { ArrowLeft, ArrowRight, Cloud, X } from "lucide-react";
 import { Screen, DailyRecord } from "../../App";
 import { Button } from "../ui/button";
@@ -18,6 +19,7 @@ export function CondicoesCampo({ onSave, onNavigate, onExitDailyRecord }: PropsC
   const [occurrenceDetails, setOccurrenceDetails] = useState("");
   const [pestOrDiseaseFound, setPestOrDiseaseFound] = useState("");
   const [appliedProduct, setAppliedProduct] = useState("");
+  const [appliedDose, setAppliedDose] = useState("");
   const [homemadeProductPreparation, setHomemadeProductPreparation] = useState("");
   const [exitOpen, setExitOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -64,6 +66,7 @@ export function CondicoesCampo({ onSave, onNavigate, onExitDailyRecord }: PropsC
         occurrenceDetails: hasOther ? occurrenceDetails.trim() : undefined,
         pestOrDiseaseFound: requiresPestDiseaseDetails ? pestOrDiseaseFound.trim() : undefined,
         appliedProduct: requiresPestDiseaseDetails ? appliedProduct.trim() : undefined,
+        appliedDose: requiresPestDiseaseDetails && appliedDose.trim() ? appliedDose.trim() : undefined,
         homemadeProductPreparation: requiresPestDiseaseDetails ? homemadeProductPreparation.trim() : undefined
       }
     });
@@ -111,7 +114,7 @@ export function CondicoesCampo({ onSave, onNavigate, onExitDailyRecord }: PropsC
               </label>
               <div className="space-y-2">
                 {weatherOptions.map((w) => (
-                  <label key={w} className="flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer">
+                  <label key={w} className="option-card flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer">
                     <input
                       type="radio"
                       name="weather"
@@ -122,6 +125,7 @@ export function CondicoesCampo({ onSave, onNavigate, onExitDailyRecord }: PropsC
                       required
                     />
                     <span className="text-lg font-medium">{w}</span>
+                    <OptionPhoto label={w} />
                   </label>
                 ))}
               </div>
@@ -134,7 +138,7 @@ export function CondicoesCampo({ onSave, onNavigate, onExitDailyRecord }: PropsC
               <p className="text-sm text-gray-500 mb-2">Pode marcar mais de uma opção.</p>
               <div className="space-y-2">
                 {occurrenceOptions.map((occ) => (
-                  <label key={occ} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                  <label key={occ} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                     <input
                       type="checkbox"
                       name="occurrences[]"
@@ -144,6 +148,7 @@ export function CondicoesCampo({ onSave, onNavigate, onExitDailyRecord }: PropsC
                       className="w-5 h-5 text-green-600"
                     />
                     <span className="text-lg">{occ}</span>
+                    <OptionPhoto label={occ} />
                   </label>
                 ))}
                 {occurrences.includes("Outra") && (
@@ -189,6 +194,17 @@ export function CondicoesCampo({ onSave, onNavigate, onExitDailyRecord }: PropsC
 
                 <div>
                   <label className="block text-base font-semibold text-gray-700 mb-2">
+                    Quanto aplicou e em que área?
+                  </label>
+                  <VoiceInput
+                    value={appliedDose}
+                    onChange={setAppliedDose}
+                    placeholder="Ex.: 2 litros em 10 canteiros (opcional)"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-base font-semibold text-gray-700 mb-2">
                     Se o produto foi feito por você, como preparou?
                   </label>
                   <VoiceTextarea
@@ -212,7 +228,7 @@ export function CondicoesCampo({ onSave, onNavigate, onExitDailyRecord }: PropsC
             <button
               type="button"
               onClick={() => onNavigate("labor")}
-              className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="w-full text-gray-600 py-3 px-6 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft size={22} />
               Voltar

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { DESTINATION_NOT_APPLICABLE, recordCode } from "../../lib/record-format";
 import { History as HistoryIcon, Calendar, Package, MapPin, FileDown, Trash2 } from "lucide-react";
 import { Screen, DailyRecord } from "../../App";
 import {
@@ -14,7 +15,7 @@ interface PropsHistorico {
   records: DailyRecord[];
   onNavigate: (screen: Screen) => void;
   onGeneratePdf: () => Promise<void>;
-  onDeleteRecord: (recordId: string) => Promise<void>;
+  onDeleteRecord: (recordId: string, reason: string) => Promise<void>;
   hasMoreRecords: boolean;
   isLoadingMoreRecords: boolean;
   onLoadMoreRecords: () => Promise<void>;
@@ -80,12 +81,10 @@ export function Historico({
       day: "2-digit",
       month: "short",
       year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
     }).format(date);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = async (reason: string) => {
     if (!recordToDelete?.id) {
       setDeleteError("Não foi possível identificar este registro para exclusão.");
       setRecordToDelete(null);
@@ -95,7 +94,7 @@ export function Historico({
     setDeleteError(null);
     setDeletingId(recordToDelete.id);
     try {
-      await onDeleteRecord(recordToDelete.id);
+      await onDeleteRecord(recordToDelete.id, reason);
       setRecordToDelete(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Não foi possível excluir este registro.";
@@ -148,7 +147,7 @@ export function Historico({
                 <h2 className="text-lg font-bold text-green-800">Registros dos últimos 7 dias</h2>
               </div>
 
-              <div className="mt-4 w-full h-[220px] min-w-[280px]">
+              <div className="mt-3 w-full h-[120px] min-w-[280px]">
                 <ResponsiveContainer width="100%" height="100%" minWidth={280}>
                   <BarChart data={chartData}>
                     <XAxis
@@ -175,27 +174,28 @@ export function Historico({
 
             {records.map((record) => (
               <div key={`${record.id}-${record.date}`} className="bg-white rounded-2xl shadow-lg p-5 space-y-3">
-                <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <Calendar size={18} className="text-green-600" />
-                    <span className="text-sm text-gray-600">
+                {record.syncStatus === "pending" && (
+                  <span className="sync-badge inline-block">Aguardando envio</span>
+                )}
+                <div className="flex items-start justify-between gap-3 pb-3 border-b border-gray-200">
+                  <div className="min-w-0">
+                    <p className="text-lg font-bold text-green-800">{record.activityType}</p>
+                    <p className="flex items-center gap-1.5 text-sm text-gray-600">
+                      <Calendar size={15} className="flex-shrink-0 text-green-600" />
                       {formatDate(record.date)}
-                    </span>
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">Código {recordCode(record.id)}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold">
-                      {record.activityType}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setRecordToDelete(record)}
-                      disabled={deletingId === record.id}
-                      className="p-2 rounded-lg border border-red-200 text-black-600 hover:bg-red-50"
-                      title="Excluir registro"
-                    >
-                      <Trash2 size={16} className={deletingId === record.id ? "opacity-50" : ""} />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRecordToDelete(record)}
+                    disabled={deletingId === record.id}
+                    className="flex-shrink-0 p-2 rounded-lg text-gray-500 hover:bg-red-50 hover:text-red-700"
+                    title="Excluir registro"
+                    aria-label="Excluir registro"
+                  >
+                    <Trash2 size={18} className={deletingId === record.id ? "opacity-50" : ""} />
+                  </button>
                 </div>
 
                 <div className="space-y-2">
@@ -204,11 +204,13 @@ export function Historico({
                       <Package size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
                       <div>
                         <p className="text-sm font-medium text-gray-700">
-                          Produção: {record.production.product}
+                          {record.production.quantity ? `Produção: ${record.production.product}` : `Cultura: ${record.production.product}`}
                         </p>
-                        <p className="text-sm text-gray-600">
-                          {record.production.quantity} {record.production.unit}
-                        </p>
+                        {record.production.quantity && (
+                          <p className="text-sm text-gray-600">
+                            {record.production.quantity} {record.production.unit}
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -219,11 +221,27 @@ export function Historico({
                       <p className="text-sm font-medium text-gray-700">
                         Local: {record.location}
                       </p>
-                      <p className="text-sm text-gray-600">
-                        Destino: {record.destination}
-                      </p>
+                      {record.destination !== DESTINATION_NOT_APPLICABLE && (
+                        <p className="text-sm text-gray-600">
+                          Destino: {record.destination}
+                        </p>
+                      )}
                     </div>
                   </div>
+
+                  {record.costs?.hasExpense && (
+                    <div className="text-sm text-gray-600 pt-2 border-t border-gray-100">
+                      <p>
+                        <span className="font-medium">Gasto:</span> {record.costs.type}
+                        {record.costs.value ? `, ${record.costs.value}` : ""}
+                      </p>
+                      {record.costs.purchaseLocation && (
+                        <p>
+                          <span className="font-medium">Comprado em:</span> {record.costs.purchaseLocation}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {record.fieldConditions && (
                     <div className="text-sm text-gray-600 pt-2 border-t border-gray-100">
@@ -241,6 +259,11 @@ export function Historico({
                       {record.fieldConditions.appliedProduct && (
                         <p>
                           <span className="font-medium">Produto aplicado:</span> {record.fieldConditions.appliedProduct}
+                        </p>
+                      )}
+                      {record.fieldConditions.appliedDose && (
+                        <p>
+                          <span className="font-medium">Quantidade e área:</span> {record.fieldConditions.appliedDose}
                         </p>
                       )}
                       {record.fieldConditions.homemadeProductPreparation && (
@@ -282,8 +305,9 @@ export function Historico({
       <DeleteRecordModal
         open={recordToDelete !== null}
         loading={Boolean(deletingId)}
+        requireReason={recordToDelete?.syncStatus !== "pending"}
         onCancel={() => setRecordToDelete(null)}
-        onConfirm={() => void confirmDelete()}
+        onConfirm={(reason) => void confirmDelete(reason)}
       />
     </div>
   );

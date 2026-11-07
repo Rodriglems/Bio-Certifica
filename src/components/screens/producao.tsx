@@ -1,17 +1,21 @@
 import { useState } from "react";
+import { OptionPhoto } from "../option-photo";
 import { ArrowLeft, ArrowRight, Package, X } from "lucide-react";
 import { Screen, DailyRecord } from "../../App";
 import { VoiceInput } from "../voice-input";
 import { Button } from "../ui/button";
 import { ExitConfirmModal } from "../exit-confirm-modal";
+import { isHarvestActivity } from "../../lib/record-format";
 
 interface PropsProducao {
   onSave: (data: Partial<DailyRecord>) => void;
   onNavigate: (screen: Screen) => void;
   onExitDailyRecord: () => void;
+  activityType?: string;
 }
 
-export function Producao({ onSave, onNavigate, onExitDailyRecord }: PropsProducao) {
+export function Producao({ onSave, onNavigate, onExitDailyRecord, activityType }: PropsProducao) {
+  const isHarvest = isHarvestActivity(activityType);
   const [product, setProduct] = useState("");
   const [customProduct, setCustomProduct] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -27,8 +31,8 @@ export function Producao({ onSave, onNavigate, onExitDailyRecord }: PropsProduca
     onSave({
       production: {
         product: finalProduct,
-        quantity,
-        unit: finalUnit
+        quantity: isHarvest ? quantity.trim() : "",
+        unit: isHarvest ? finalUnit : ""
       }
     });
     onNavigate("production-location");
@@ -47,7 +51,7 @@ export function Producao({ onSave, onNavigate, onExitDailyRecord }: PropsProduca
                 <Package size={28} className="text-green-700" strokeWidth={2.5} />
               </div>
               <h1 className="text-2xl font-bold text-green-800">
-                Produção do dia
+                {isHarvest ? "Colheita do dia" : "Cultura trabalhada"}
               </h1>
             </div>
 
@@ -66,11 +70,11 @@ export function Producao({ onSave, onNavigate, onExitDailyRecord }: PropsProduca
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-lg font-semibold text-gray-700 mb-3">
-                O que foi produzido ou colhido?
+                {isHarvest ? "O que foi colhido?" : "Em qual cultura foi feita a atividade?"}
               </label>
               <div className="space-y-2">
                 {products.map((p) => (
-                  <label key={p} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                  <label key={p} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                     <input
                       type="radio"
                       name="product"
@@ -81,6 +85,7 @@ export function Producao({ onSave, onNavigate, onExitDailyRecord }: PropsProduca
                       required
                     />
                     <span className="text-lg">{p}</span>
+                    <OptionPhoto label={p} />
                   </label>
                 ))}
                 {product === "Outra" && (
@@ -94,12 +99,17 @@ export function Producao({ onSave, onNavigate, onExitDailyRecord }: PropsProduca
               </div>
             </div>
 
+            {isHarvest && (
+              <>
             <div>
               <label className="block text-lg font-semibold text-gray-700 mb-2">
                 Quantidade
               </label>
               <input
                 type="text"
+                inputMode="decimal"
+                pattern="[0-9]+([,.][0-9]+)?"
+                title="Digite só números, como 10 ou 2,5"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 placeholder="Digite a quantidade"
@@ -112,9 +122,9 @@ export function Producao({ onSave, onNavigate, onExitDailyRecord }: PropsProduca
               <label className="block text-lg font-semibold text-gray-700 mb-3">
                 Unidade
               </label>
-              <div className="space-y-2">
+              <div className="option-row">
                 {units.map((u) => (
-                  <label key={u} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                  <label key={u} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                     <input
                       type="radio"
                       name="unit"
@@ -125,6 +135,7 @@ export function Producao({ onSave, onNavigate, onExitDailyRecord }: PropsProduca
                       required
                     />
                     <span className="text-lg">{u}</span>
+                    <OptionPhoto label={u} />
                   </label>
                 ))}
                 {unit === "Outra" && (
@@ -138,6 +149,8 @@ export function Producao({ onSave, onNavigate, onExitDailyRecord }: PropsProduca
                 )}
               </div>
             </div>
+              </>
+            )}
 
             <button
               type="submit"
@@ -149,7 +162,7 @@ export function Producao({ onSave, onNavigate, onExitDailyRecord }: PropsProduca
             <button
               type="button"
               onClick={() => onNavigate("activity-type")}
-              className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="w-full text-gray-600 py-3 px-6 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft size={22} />
               Voltar

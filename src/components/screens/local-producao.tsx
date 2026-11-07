@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { OptionPhoto } from "../option-photo";
 import { ArrowLeft, ArrowRight, MapPin, X } from "lucide-react";
 import { Screen, DailyRecord } from "../../App";
 import { VoiceInput } from "../voice-input";
@@ -62,8 +63,7 @@ export function LocalProducao({ onSave, onNavigate, onExitDailyRecord }: PropsLo
               {locations.map((loc) => (
                 <label
                   key={loc}
-                  className="flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer transition-colors"
-                >
+                  className="option-card flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer transition-colors">
                   <input
                     type="radio"
                     name="location"
@@ -74,6 +74,7 @@ export function LocalProducao({ onSave, onNavigate, onExitDailyRecord }: PropsLo
                     required
                   />
                   <span className="text-lg font-medium">{loc}</span>
+                  <OptionPhoto label={loc} />
                 </label>
               ))}
               
@@ -98,7 +99,7 @@ export function LocalProducao({ onSave, onNavigate, onExitDailyRecord }: PropsLo
             <button
               type="button"
               onClick={() => onNavigate("production")}
-              className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="w-full text-gray-600 py-3 px-6 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft size={22} />
               Voltar

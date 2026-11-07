@@ -1,5 +1,6 @@
-import { User, Sprout, MapPin, Phone, Edit, Moon, Sun } from "lucide-react";
+import { User, Sprout, MapPin, Phone, Edit, Moon, Sun, Volume2 } from "lucide-react";
 import { Screen, Farmer, Harvest } from "../../App";
+import { isSpeechSupported, speak, stopSpeaking } from "../../lib/tts";
 
 interface PropsPerfil {
   farmer: Farmer | null;
@@ -7,10 +8,26 @@ interface PropsPerfil {
   onNavigate: (screen: Screen) => void;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
+  isReadAloudEnabled: boolean;
+  onToggleReadAloud: () => void;
 }
 
-export function Perfil({ farmer, harvest, onNavigate, isDarkMode, onToggleDarkMode }: PropsPerfil) {
+export function Perfil({
+  farmer,
+  harvest,
+  onNavigate,
+  isDarkMode,
+  onToggleDarkMode,
+  isReadAloudEnabled,
+  onToggleReadAloud,
+}: PropsPerfil) {
   const ThemeIcon = isDarkMode ? Sun : Moon;
+
+  const handleToggleReadAloud = () => {
+    if (isReadAloudEnabled) stopSpeaking();
+    else speak("Leitura em voz alta ligada. Toque em uma pergunta ou opção para ouvir.");
+    onToggleReadAloud();
+  };
 
   return (
     <div className="min-h-screen p-6 pb-24">
@@ -34,6 +51,33 @@ export function Perfil({ farmer, harvest, onNavigate, isDarkMode, onToggleDarkMo
           >
             <ThemeIcon size={22} strokeWidth={2.5} />
           </button>
+        </div>
+
+        {/* Configurações */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 space-y-4">
+          <h2 className="text-xl font-bold text-green-800 pb-3 border-b border-gray-200">Configurações</h2>
+          {isSpeechSupported() ? (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isReadAloudEnabled}
+              onClick={handleToggleReadAloud}
+              className="flex w-full items-center gap-3 text-left"
+            >
+              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
+                <Volume2 size={22} strokeWidth={2.5} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-lg font-semibold text-gray-800">Leitura em voz alta</span>
+                <span className="block text-sm text-gray-500">Toque em uma pergunta ou opção do formulário para ouvir.</span>
+              </span>
+              <span className={`setting-switch ${isReadAloudEnabled ? "setting-switch--on" : ""}`.trim()} aria-hidden="true">
+                <span />
+              </span>
+            </button>
+          ) : (
+            <p className="text-sm text-gray-500">Este aparelho não tem leitura em voz alta.</p>
+          )}
         </div>
 
         {/* Dados do Agricultor */}

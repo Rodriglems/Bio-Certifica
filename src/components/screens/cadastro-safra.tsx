@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { OptionPhoto } from "../option-photo";
 import { ArrowLeft, ArrowRight, Leaf } from "lucide-react";
 import { Screen, Harvest } from "../../App";
 import { VoiceInput } from "../voice-input";
@@ -92,7 +93,7 @@ export function CadastroSafra({
               </label>
               <div className="space-y-2">
                 {MAIN_CROP_OPTIONS.map((crop) => (
-                  <label key={crop} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                  <label key={crop} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                     <input
                       type="radio"
                       name="mainCrop"
@@ -103,6 +104,7 @@ export function CadastroSafra({
                       required
                     />
                     <span className="text-lg">{crop}</span>
+                    <OptionPhoto label={crop} />
                   </label>
                 ))}
                 {formData.mainCrop === "Outra" && (
@@ -123,7 +125,7 @@ export function CadastroSafra({
               </label>
               <div className="space-y-2">
                 {SEED_TYPE_OPTIONS.map((seed) => (
-                  <label key={seed} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                  <label key={seed} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                     <input
                       type="radio"
                       name="seedType"
@@ -134,6 +136,7 @@ export function CadastroSafra({
                       required
                     />
                     <span className="text-lg">{seed}</span>
+                    <OptionPhoto label={seed} />
                   </label>
                 ))}
                 {formData.seedType === "Outra" && (
@@ -154,7 +157,7 @@ export function CadastroSafra({
               </label>
               <div className="space-y-2">
                 {CULTIVATION_SYSTEM_OPTIONS.map((system) => (
-                  <label key={system} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                  <label key={system} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                     <input
                       type="radio"
                       name="cultivationSystem"
@@ -165,6 +168,7 @@ export function CadastroSafra({
                       required
                     />
                     <span className="text-lg">{system}</span>
+                    <OptionPhoto label={system} />
                   </label>
                 ))}
                 {formData.cultivationSystem === "Outro" && (
@@ -185,7 +189,7 @@ export function CadastroSafra({
               </label>
               <div className="space-y-2">
                 {PLANTED_AREA_OPTIONS.map((area) => (
-                  <label key={area} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                  <label key={area} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                     <input
                       type="radio"
                       name="plantedArea"
@@ -196,6 +200,7 @@ export function CadastroSafra({
                       required
                     />
                     <span className="text-lg">{area}</span>
+                    <OptionPhoto label={area} />
                   </label>
                 ))}
                 {formData.plantedArea === "Outra" && (
@@ -220,7 +225,7 @@ export function CadastroSafra({
             <button
               type="button"
               onClick={() => onNavigate(backScreen)}
-              className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="w-full text-gray-600 py-3 px-6 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft size={22} />
               Voltar

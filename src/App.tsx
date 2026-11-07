@@ -1,11 +1,28 @@
-import { lazy, Suspense, useState, useEffect, useCallback } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback, useRef } from "react";
+import { Network } from "@capacitor/network";
 import { TelaInicial } from "./components/screens/tela-inicial";
+import { SyncStatus } from "./components/sync-status";
+import { FormProgress } from "./components/form-progress";
+import { DESTINATION_NOT_APPLICABLE, isHarvestActivity } from "./lib/record-format";
 import { BottomNav } from "./components/bottom-nav";
 import type { RespostasAnuais } from "./components/screens/perguntas-anuais";
 import { downloadAuditPdf } from "./lib/audit-pdf";
 import { api, ApiError } from "./lib/api";
 import { Alert, AlertDescription, AlertTitle } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
+import {
+  clearSnapshot,
+  enqueuePending,
+  flushQueue,
+  listPending,
+  loadSnapshot,
+  removePending,
+  saveSnapshot,
+  type AppSnapshot,
+  type FlushResult,
+  type PendingEntry,
+} from "./lib/offline-queue";
+import { installReadAloud, READ_ALOUD_STORAGE_KEY } from "./lib/read-aloud";
 
 // As telas fora da abertura são baixadas somente quando o usuário as acessa.
 const CadastroAgricultor = lazy(() => import("./components/screens/cadastro-agricultor").then(({ CadastroAgricultor }) => ({ default: CadastroAgricultor })));
@@ -70,7 +87,10 @@ export interface Harvest {
 
 export interface DailyRecord {
   id: string;
+  /** Dia em que a atividade foi feita. */
   date: string;
+  /** Momento em que foi lançada no aplicativo. */
+  loggedAt?: string;
   activityType: string;
   production?: {
     product: string;
@@ -103,9 +123,12 @@ export interface DailyRecord {
     occurrenceDetails?: string;
     pestOrDiseaseFound?: string;
     appliedProduct?: string;
+    appliedDose?: string;
     homemadeProductPreparation?: string;
   };
   observations?: string;
+  /** Presente enquanto o registro está só no celular, aguardando envio. */
+  syncStatus?: "pending";
 }
 
 export interface AppData {
@@ -156,6 +179,45 @@ const TEST_LAST_STEP = ["1", "true", "yes", "on"].includes(
 );
 
 const RECORDS_PAGE_SIZE = 50;
+const SYNC_REQUEST_TIMEOUT_MS = 20_000;
+const SYNC_RETRY_INTERVAL_MS = 45_000;
+
+/** Envia uma entrada da fila, com limite de tempo: conexão ruim no campo não pode travar o envio. */
+function sendPendingEntry(entry: PendingEntry) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SYNC_REQUEST_TIMEOUT_MS);
+  const request =
+    entry.kind === "record"
+      ? api.saveDailyRecord(entry.payload as DailyRecord, controller.signal)
+      : entry.kind === "harvest"
+        ? api.saveHarvest(entry.payload as Harvest, controller.signal)
+        : api.saveAnnualAnswers(entry.payload as RespostasAnuais, controller.signal);
+  return request.finally(() => clearTimeout(timeout));
+}
+
+/** Junta os dados do servidor com o que ainda está só no celular, que é sempre mais recente. */
+function mergePending(snapshot: AppSnapshot, pending: PendingEntry[]) {
+  const pendingRecords = pending
+    .filter((entry) => entry.kind === "record")
+    .map((entry) => ({ ...(entry.payload as DailyRecord), syncStatus: "pending" as const }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const pendingIds = new Set(pendingRecords.map((record) => record.id));
+  const pendingHarvest = pending.find((entry) => entry.kind === "harvest")?.payload as Harvest | undefined;
+  const annual = { ...snapshot.annual };
+  for (const entry of pending) {
+    if (entry.kind !== "annual") continue;
+    const answers = entry.payload as RespostasAnuais;
+    annual[String(answers.year)] = answers;
+  }
+
+  return {
+    farmer: snapshot.farmer,
+    harvest: pendingHarvest ?? snapshot.harvest,
+    records: [...pendingRecords, ...snapshot.records.filter((record) => !pendingIds.has(record.id))],
+    recordPagination: snapshot.recordPagination,
+    annual,
+  };
+}
 
 function isValidDailyRecord(record: Partial<DailyRecord> | null | undefined): record is DailyRecord {
   if (!record) return false;
@@ -195,11 +257,25 @@ export default function App() {
   const [isLoadingMoreRecords, setIsLoadingMoreRecords] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isPropertyPhotoLoaded, setIsPropertyPhotoLoaded] = useState(false);
+  const [isReadAloudEnabled, setIsReadAloudEnabled] = useState(() => {
+    return window.localStorage.getItem(READ_ALOUD_STORAGE_KEY) === "true";
+  });
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isNetworkOnline, setIsNetworkOnline] = useState(true);
+  const [isServerReachable, setIsServerReachable] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const syncInFlight = useRef<Promise<FlushResult> | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDarkMode);
     window.localStorage.setItem("biocertifica-theme", isDarkMode ? "dark" : "light");
   }, [isDarkMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(READ_ALOUD_STORAGE_KEY, String(isReadAloudEnabled));
+    if (!isReadAloudEnabled) return;
+    return installReadAloud();
+  }, [isReadAloudEnabled]);
 
   const reportServerError = useCallback((error: unknown) => {
     const message =
@@ -222,18 +298,18 @@ export default function App() {
     console.error(error);
   }, []);
 
-  const reloadFromServer = useCallback(async () => {
+  const reloadFromServer = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     setIsReloading(true);
     try {
       const data = await api.getAppData(RECORDS_PAGE_SIZE);
+      const pending = await listPending(data.user.agricultorId);
+      void saveSnapshot(data).catch((error) => console.warn("Falha ao guardar dados no celular:", error));
+      setPendingCount(pending.length);
+      setIsServerReachable(true);
       setIsPropertyPhotoLoaded(false);
       setAppData((prev) => ({
         ...prev,
-        farmer: data.farmer,
-        harvest: data.harvest,
-        records: data.records,
-        recordPagination: data.recordPagination,
-        annual: data.annual,
+        ...mergePending(data, pending),
         auth: {
           ...(prev.auth ?? { isLoggedIn: false, hasPasswordConfigured: false }),
           isLoggedIn: true,
@@ -248,15 +324,111 @@ export default function App() {
       setServerErrorTitle("Erro ao sincronizar");
       setServerError(null);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao conectar ao servidor";
-      setServerErrorTitle("Erro ao sicronizar")
-      setServerError(message);
+      if (!silent) {
+        const message = error instanceof Error ? error.message : "Falha ao conectar ao servidor";
+        setServerErrorTitle("Erro ao sincronizar");
+        setServerError(message);
+      }
       console.error("Falha ao carregar dados do servidor:", error);
       throw error;
     } finally {
       setIsReloading(false);
     }
   }, []);
+
+  const endExpiredSession = useCallback(() => {
+    api.setAuthToken(null);
+    void clearSnapshot();
+    setAppData((prev) => ({
+      ...prev,
+      auth: {
+        ...(prev.auth ?? { isLoggedIn: false, hasPasswordConfigured: false }),
+        isLoggedIn: false,
+        token: undefined,
+        user: undefined,
+      },
+    }));
+    setServerErrorTitle("Sessão expirada");
+    setServerError("Entre de novo para enviar o que está guardado no celular. Nada foi perdido.");
+    setCurrentScreen("login");
+  }, []);
+
+  const syncQueue = useCallback(
+    (owner: string, { retryRejected = true }: { retryRejected?: boolean } = {}) => {
+      if (syncInFlight.current) return syncInFlight.current;
+
+      const run = (async () => {
+        setIsSyncing(true);
+        try {
+          const result = await flushQueue(owner, sendPendingEntry, { retryRejected });
+          setPendingCount(result.remaining.length);
+          if (result.sent > 0 || result.unreachable) setIsServerReachable(!result.unreachable);
+
+          const remainingIds = new Set(result.remaining.map((entry) => entry.id));
+          setAppData((prev) => ({
+            ...prev,
+            records: prev.records.map((record) => {
+              if (!record.syncStatus || remainingIds.has(`record:${record.id}`)) return record;
+              const { syncStatus: _sent, ...sentRecord } = record;
+              return sentRecord;
+            }),
+          }));
+
+          if (result.rejected > 0) {
+            const reason = result.remaining.find((entry) => entry.rejectedReason)?.rejectedReason;
+            setServerErrorTitle("O servidor não aceitou um registro");
+            setServerError(`${reason ?? "Dados inválidos."} O registro continua guardado no celular.`);
+          }
+          if (result.authExpired) endExpiredSession();
+          return result;
+        } finally {
+          setIsSyncing(false);
+          syncInFlight.current = null;
+        }
+      })();
+
+      syncInFlight.current = run;
+      return run;
+    },
+    [endExpiredSession],
+  );
+
+  const ownerId = appData.auth?.isLoggedIn ? appData.auth.user?.agricultorId : undefined;
+
+  useEffect(() => {
+    if (!ownerId) return;
+
+    const syncAfterSending = async (options?: { retryRejected?: boolean }) => {
+      const result = await syncQueue(ownerId, options);
+      if (result.sent > 0) await reloadFromServer({ silent: true });
+    };
+    const trySync = (options?: { retryRejected?: boolean }) => {
+      syncAfterSending(options).catch((error) => console.warn("Sincronização adiada:", error));
+    };
+    const handleForeground = () => {
+      if (document.visibilityState === "visible") trySync();
+    };
+    const handleBrowserOnline = () => trySync();
+
+    trySync();
+    // Se a conexão voltar sem o aviso do sistema, a nova tentativa periódica resolve.
+    const retryTimer = window.setInterval(() => trySync({ retryRejected: false }), SYNC_RETRY_INTERVAL_MS);
+    document.addEventListener("visibilitychange", handleForeground);
+    window.addEventListener("online", handleBrowserOnline);
+
+    void Network.getStatus().then((status) => setIsNetworkOnline(status.connected)).catch(() => undefined);
+    const networkListener = Network.addListener("networkStatusChange", (status) => {
+      setIsNetworkOnline(status.connected);
+      if (status.connected) trySync();
+    });
+
+    return () => {
+      window.clearInterval(retryTimer);
+      document.removeEventListener("visibilitychange", handleForeground);
+      window.removeEventListener("online", handleBrowserOnline);
+      void networkListener.then((handle) => handle.remove());
+    };
+  }, [ownerId, reloadFromServer, syncQueue]);
 
   useEffect(() => {
     let cancelled = false;
@@ -282,12 +454,41 @@ export default function App() {
       }
 
       try {
-        await reloadFromServer();
+        await reloadFromServer({ silent: true });
         if (!cancelled) {
           setCurrentScreen("main-menu");
         }
       } catch (error) {
-        api.setAuthToken(null);
+        const isSessionInvalid = error instanceof ApiError && error.status === 401;
+
+        // Sem internet a sessão continua válida: abre com os últimos dados guardados.
+        if (!isSessionInvalid) {
+          const snapshot = await loadSnapshot().catch(() => null);
+          if (snapshot && !cancelled) {
+            const pending = await listPending(snapshot.user.agricultorId).catch(() => []);
+            setAppData((prev) => ({
+              ...prev,
+              ...mergePending(snapshot, pending),
+              auth: {
+                isLoggedIn: true,
+                hasPasswordConfigured: snapshot.hasPasswordConfigured,
+                token,
+                user: {
+                  agricultorId: snapshot.user.agricultorId,
+                  username: snapshot.user.username,
+                },
+              },
+            }));
+            setPendingCount(pending.length);
+            setIsServerReachable(false);
+            setCurrentScreen("main-menu");
+            return;
+          }
+        } else {
+          api.setAuthToken(null);
+          void clearSnapshot();
+        }
+
         if (!cancelled) {
           setAppData((prev) => ({
             ...prev,
@@ -299,7 +500,7 @@ export default function App() {
             },
           }));
           setCurrentScreen("login");
-          if (error instanceof ApiError && error.status === 401) {
+          if (isSessionInvalid) {
             setServerError(null);
           }
         }
@@ -337,7 +538,9 @@ export default function App() {
           );
         }
       } catch (error) {
-        if (!cancelled) reportServerError(error);
+        // Sem conexão, o perfil apenas fica sem a foto.
+        const isConnectionError = error instanceof ApiError && error.status === 0;
+        if (!cancelled && !isConnectionError) reportServerError(error);
       } finally {
         if (!cancelled) setIsPropertyPhotoLoaded(true);
       }
@@ -424,7 +627,13 @@ export default function App() {
   const updateHarvest = (harvest: Harvest) => {
     if (DEBUG_UI) console.log("[ui] submit harvest", { mainCrop: harvest.mainCrop, seedType: harvest.seedType });
     setAppData((prev: AppData) => ({ ...prev, harvest }));
-    api.saveHarvest(harvest).then(() => setServerError(null)).catch(reportServerError);
+    if (!ownerId) {
+      api.saveHarvest(harvest).then(() => setServerError(null)).catch(reportServerError);
+      return;
+    }
+    enqueuePending({ id: "harvest", owner: ownerId, kind: "harvest", payload: harvest })
+      .then(() => syncQueue(ownerId))
+      .catch(reportServerError);
   };
 
   const updateCurrentRecord = (data: Partial<DailyRecord>) => {
@@ -434,22 +643,24 @@ export default function App() {
     }));
   };
 
-  const saveRecord = async (): Promise<{ ok: boolean; message?: string }> => {
+  const saveRecord = async (): Promise<{ ok: boolean; queued?: boolean; message?: string }> => {
     const authToken = api.getAuthToken();
-    if (!appData.auth?.isLoggedIn || !authToken) {
+    if (!appData.auth?.isLoggedIn || !authToken || !ownerId) {
       setServerErrorTitle("Sessão expirada");
       setServerError("Faça login novamente para salvar e sincronizar no Postgres.");
       setCurrentScreen("login");
       return { ok: false, message: "Sessão expirada. Faça login novamente." };
     }
+    const isHarvest = isHarvestActivity(appData.currentRecord.activityType);
     const baseRecord: DailyRecord = {
       id: Date.now().toString(),
-      date: new Date().toISOString(),
+      date: appData.currentRecord.date || new Date().toISOString(),
+      loggedAt: new Date().toISOString(),
       activityType: appData.currentRecord.activityType || "",
       production: appData.currentRecord.production,
       location: appData.currentRecord.location || "",
-      destination: appData.currentRecord.destination || "",
-      destinationDetails: appData.currentRecord.destinationDetails,
+      destination: isHarvest ? appData.currentRecord.destination || "" : DESTINATION_NOT_APPLICABLE,
+      destinationDetails: isHarvest ? appData.currentRecord.destinationDetails : undefined,
       costs: appData.currentRecord.costs,
       labor: appData.currentRecord.labor || {
         type: "",
@@ -501,41 +712,40 @@ export default function App() {
 
     if (DEBUG_UI) console.log("[ui] submit daily record", { id: candidate.id, testMode: TEST_LAST_STEP });
 
+    // Grava no celular antes de tentar enviar: se o app fechar ou a conexão cair, nada se perde.
+    const entryId = `record:${candidate.id}`;
     try {
-      await api.saveDailyRecord(candidate);
-      await reloadFromServer();
-      setServerErrorTitle("Erro ao sincronizar");
-      setServerError(null);
-      setAppData((prev: AppData) => ({ ...prev, currentRecord: {} }));
-      return { ok: true };
+      await enqueuePending({ id: entryId, owner: ownerId, kind: "record", payload: candidate });
     } catch (error) {
-      if (error instanceof ApiError && error.status === 0) {
-        const message = "Verifique sua internet ou se o backend está ligado e tente novamente.";
-        setServerErrorTitle("Sem conexão com o servidor");
-        setServerError(message);
-        return { ok: false, message };
-      }
-      if (error instanceof ApiError && error.status === 401) {
-        const message = "Faça login novamente para salvar no Postgres.";
-        setServerErrorTitle("Sessão expirada");
-        setServerError(message);
-        setAppData((prev: AppData) => ({
-          ...prev,
-          auth: {
-            ...(prev.auth ?? { isLoggedIn: false, hasPasswordConfigured: false }),
-            isLoggedIn: false,
-            token: undefined,
-            user: undefined,
-          },
-        }));
-        setCurrentScreen("login");
-        return { ok: false, message };
-      }
-
-      const message = error instanceof Error ? error.message : "Não foi possível salvar no servidor.";
-      reportServerError(error);
-      return { ok: false, message };
+      console.error("Falha ao guardar o registro no celular:", error);
+      return { ok: false, message: "Não foi possível guardar o registro neste celular. Verifique se há espaço livre e tente de novo." };
     }
+
+    setPendingCount((count) => count + 1);
+    setAppData((prev: AppData) => ({
+      ...prev,
+      currentRecord: {},
+      records: [{ ...candidate, syncStatus: "pending" }, ...prev.records],
+    }));
+
+    let stillPending: PendingEntry | undefined;
+    try {
+      const result = await syncQueue(ownerId);
+      stillPending = result.remaining.find((entry) => entry.id === entryId);
+      if (!stillPending) {
+        setServerError(null);
+        await reloadFromServer({ silent: true }).catch(() => undefined);
+        return { ok: true };
+      }
+    } catch (error) {
+      console.warn("Envio adiado; o registro continua guardado:", error);
+      return { ok: true, queued: true };
+    }
+
+    if (stillPending.rejectedReason) {
+      return { ok: false, message: `${stillPending.rejectedReason} O registro continua guardado no celular.` };
+    }
+    return { ok: true, queued: true };
   };
 
   const resetCurrentRecord = () => {
@@ -556,7 +766,13 @@ export default function App() {
       }
     }));
 
-    api.saveAnnualAnswers(answers).then(() => setServerError(null)).catch(reportServerError);
+    if (!ownerId) {
+      api.saveAnnualAnswers(answers).then(() => setServerError(null)).catch(reportServerError);
+      return;
+    }
+    enqueuePending({ id: `annual:${answers.year}`, owner: ownerId, kind: "annual", payload: answers })
+      .then(() => syncQueue(ownerId))
+      .catch(reportServerError);
   };
 
   const loginWithCredentials = async (identifier: string, password: string) => {
@@ -586,6 +802,14 @@ export default function App() {
   };
 
   const logout = () => {
+    if (pendingCount > 0) {
+      const confirmed = window.confirm(
+        `Há ${pendingCount} registro(s) ainda não enviados. Eles continuam guardados neste celular e serão enviados quando você entrar de novo com a mesma conta, o que exige internet. Sair mesmo assim?`,
+      );
+      if (!confirmed) return;
+    }
+    void clearSnapshot();
+    setPendingCount(0);
     void api.logout();
     api.setAuthToken(null);
     setIsPropertyPhotoLoaded(false);
@@ -659,7 +883,18 @@ export default function App() {
     }
   };
 
-  const deleteRecord = async (recordId: string) => {
+  const deleteRecord = async (recordId: string, reason: string) => {
+    const pendingRecord = appData.records.find((record) => record.id === recordId && record.syncStatus);
+    if (pendingRecord && ownerId) {
+      await removePending(ownerId, `record:${recordId}`);
+      setPendingCount((count) => Math.max(0, count - 1));
+      setAppData((prev: AppData) => ({
+        ...prev,
+        records: prev.records.filter((record) => record.id !== recordId),
+      }));
+      return;
+    }
+
     const previousRecords = appData.records;
     setAppData((prev: AppData) => ({
       ...prev,
@@ -671,7 +906,7 @@ export default function App() {
     }));
 
     try {
-      await api.deleteDailyRecord(recordId);
+      await api.deleteDailyRecord(recordId, reason);
       setServerError(null);
     } catch (error) {
       setAppData((prev: AppData) => ({
@@ -734,7 +969,9 @@ export default function App() {
           recordPagination: { hasMore, nextOffset },
         }));
       }
-      await downloadAuditPdf({ ...appData, records, recordPagination: { hasMore, nextOffset } });
+      // Sem conexão o relatório ainda sai, avisando o que não pôde ser consultado.
+      const audit = await api.getAuditData().catch(() => null);
+      await downloadAuditPdf({ ...appData, records, recordPagination: { hasMore, nextOffset } }, audit);
       setServerError(null);
     } catch (error) {
       reportServerError(error);
@@ -742,6 +979,15 @@ export default function App() {
     } finally {
       setIsGeneratingPdf(false);
     }
+  };
+
+  // Só a colheita tem a etapa de destino: as outras atividades passam direto por ela, nos dois sentidos.
+  const navigateRecordFlow = (target: Screen) => {
+    if (target === "production-destination" && !isHarvestActivity(appData.currentRecord.activityType)) {
+      setCurrentScreen(currentScreen === "production-location" ? "costs" : "production-location");
+      return;
+    }
+    setCurrentScreen(target);
   };
 
   const handleBottomNavNavigate = (screen: Screen) => {
@@ -768,7 +1014,8 @@ export default function App() {
     && currentScreen !== "observations";
 
   const showGlobalErrorBanner = !!serverError
-    && !["farmer-registration", "confirmation", "login", "forgot-password"].includes(currentScreen);
+    && (serverErrorTitle === "Sessão expirada"
+      || !["farmer-registration", "confirmation", "login", "forgot-password"].includes(currentScreen));
 
   const renderScreen = () => {
     if (isRestoringSession) {
@@ -867,6 +1114,10 @@ export default function App() {
             records={appData.records}
             onLogout={logout}
             onChangePassword={changePassword}
+            onRegister={() => {
+              setRegisterConfirmFromScreen("main-menu");
+              setCurrentScreen("activity-type");
+            }}
           />
         );
       case "annual-questions":
@@ -888,9 +1139,16 @@ export default function App() {
       case "activity-type":
         return <TipoAtividade onSave={updateCurrentRecord} onNavigate={setCurrentScreen} onExitDailyRecord={exitDailyRecord} />;
       case "production":
-        return <Producao onSave={updateCurrentRecord} onNavigate={setCurrentScreen} onExitDailyRecord={exitDailyRecord} />;
+        return (
+          <Producao
+            onSave={updateCurrentRecord}
+            onNavigate={setCurrentScreen}
+            onExitDailyRecord={exitDailyRecord}
+            activityType={appData.currentRecord.activityType}
+          />
+        );
       case "production-location":
-        return <LocalProducao onSave={updateCurrentRecord} onNavigate={setCurrentScreen} onExitDailyRecord={exitDailyRecord} />;
+        return <LocalProducao onSave={updateCurrentRecord} onNavigate={navigateRecordFlow} onExitDailyRecord={exitDailyRecord} />;
       case "production-destination":
         return (
           <DestinoProducao
@@ -910,7 +1168,7 @@ export default function App() {
           />
         );
       case "costs":
-        return <Custos onSave={updateCurrentRecord} onNavigate={setCurrentScreen} onExitDailyRecord={exitDailyRecord} />;
+        return <Custos onSave={updateCurrentRecord} onNavigate={navigateRecordFlow} onExitDailyRecord={exitDailyRecord} />;
       case "labor":
         return <MaoDeObra onSave={updateCurrentRecord} onNavigate={setCurrentScreen} onExitDailyRecord={exitDailyRecord} />;
       case "field-conditions":
@@ -940,6 +1198,8 @@ export default function App() {
             onNavigate={setCurrentScreen}
             isDarkMode={isDarkMode}
             onToggleDarkMode={() => setIsDarkMode((current) => !current)}
+            isReadAloudEnabled={isReadAloudEnabled}
+            onToggleReadAloud={() => setIsReadAloudEnabled((current) => !current)}
           />
         );
       default:
@@ -955,6 +1215,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {!!appData.auth?.isLoggedIn && (
+        <SyncStatus
+          pendingCount={pendingCount}
+          isOnline={isNetworkOnline && (isServerReachable || pendingCount === 0)}
+          isSyncing={isSyncing}
+        />
+      )}
       {showGlobalErrorBanner && (
         <div className="p-4">
           <div className="max-w-md mx-auto">
@@ -976,6 +1243,7 @@ export default function App() {
           </div>
         </div>
       )}
+      <FormProgress screen={currentScreen} record={appData.currentRecord} />
       <Suspense
         fallback={
           <div className="min-h-screen flex items-center justify-center bg-green-50 text-green-800">

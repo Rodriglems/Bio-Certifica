@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { OptionPhoto } from "../option-photo";
 import { ArrowLeft, ArrowRight, Users, X } from "lucide-react";
 import { Screen, DailyRecord } from "../../App";
 import { Button } from "../ui/button";
@@ -77,7 +78,7 @@ export function MaoDeObra({ onSave, onNavigate, onExitDailyRecord }: PropsMaoDeO
               </label>
               <div className="space-y-2">
                 {laborTypes.map((type) => (
-                  <label key={type} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                  <label key={type} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                     <input
                       type="radio"
                       name="laborType"
@@ -88,6 +89,7 @@ export function MaoDeObra({ onSave, onNavigate, onExitDailyRecord }: PropsMaoDeO
                       required
                     />
                     <span className="text-lg">{type}</span>
+                    <OptionPhoto label={type} />
                   </label>
                 ))}
                 {laborType === "Outro" && (
@@ -105,9 +107,9 @@ export function MaoDeObra({ onSave, onNavigate, onExitDailyRecord }: PropsMaoDeO
               <label className="block text-lg font-semibold text-gray-700 mb-3">
                 Quantidade de pessoas
               </label>
-              <div className="space-y-2">
+              <div className="option-row option-row--3">
                 {peopleCounts.map((count) => (
-                  <label key={count} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                  <label key={count} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                     <input
                       type="radio"
                       name="peopleCount"
@@ -118,6 +120,7 @@ export function MaoDeObra({ onSave, onNavigate, onExitDailyRecord }: PropsMaoDeO
                       required
                     />
                     <span className="text-lg">{count}</span>
+                    <OptionPhoto label={count} />
                   </label>
                 ))}
               </div>
@@ -127,7 +130,7 @@ export function MaoDeObra({ onSave, onNavigate, onExitDailyRecord }: PropsMaoDeO
               <label className="block text-lg font-semibold text-gray-700 mb-3">
                 Houve pagamento?
               </label>
-              <div className="space-y-2">
+              <div className="option-row">
                 <label className="flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer">
                   <input
                     type="radio"
@@ -162,7 +165,7 @@ export function MaoDeObra({ onSave, onNavigate, onExitDailyRecord }: PropsMaoDeO
                 </label>
                 <div className="space-y-2">
                   {paymentValues.map((val) => (
-                    <label key={val} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                    <label key={val} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                       <input
                         type="radio"
                         name="paymentValue"
@@ -173,6 +176,7 @@ export function MaoDeObra({ onSave, onNavigate, onExitDailyRecord }: PropsMaoDeO
                         required
                       />
                       <span className="text-lg">{val}</span>
+                      <OptionPhoto label={val} />
                     </label>
                   ))}
                 </div>
@@ -189,7 +193,7 @@ export function MaoDeObra({ onSave, onNavigate, onExitDailyRecord }: PropsMaoDeO
             <button
               type="button"
               onClick={() => onNavigate("costs")}
-              className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="w-full text-gray-600 py-3 px-6 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft size={22} />
               Voltar

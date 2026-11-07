@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { OptionPhoto } from "../option-photo";
 import { ArrowLeft, ArrowRight, Clipboard, X } from "lucide-react";
 import { Screen, DailyRecord } from "../../App";
 import { Button } from "../ui/button";
 import { ExitConfirmModal } from "../exit-confirm-modal";
+import { activityDateFromInput, todayInputValue } from "../../lib/record-format";
 import { VoiceInput } from "../voice-input";
 
 interface PropsTipoAtividade {
@@ -14,12 +16,13 @@ interface PropsTipoAtividade {
 export function TipoAtividade({ onSave, onNavigate, onExitDailyRecord }: PropsTipoAtividade) {
   const [activityType, setActivityType] = useState("");
   const [customActivity, setCustomActivity] = useState("");
+  const [activityDay, setActivityDay] = useState(todayInputValue);
   const [exitOpen, setExitOpen] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const finalActivity = activityType === "Outra" ? customActivity : activityType;
-    onSave({ activityType: finalActivity });
+    onSave({ activityType: finalActivity, date: activityDateFromInput(activityDay) });
     onNavigate("production");
   };
 
@@ -57,12 +60,25 @@ export function TipoAtividade({ onSave, onNavigate, onExitDailyRecord }: PropsTi
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="activity-day" className="block text-lg font-semibold text-gray-700 mb-2">
+                Em que dia foi feita?
+              </label>
+              <input
+                id="activity-day"
+                type="date"
+                value={activityDay}
+                max={todayInputValue()}
+                onChange={(e) => setActivityDay(e.target.value)}
+                className="block w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg focus:border-green-500 focus:outline-none"
+                required
+              />
+            </div>
             <div className="space-y-2">
               {activities.map((activity) => (
                 <label
                   key={activity}
-                  className="flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer transition-colors"
-                >
+                  className="option-card flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer transition-colors">
                   <input
                     type="radio"
                     name="activityType"
@@ -73,6 +89,7 @@ export function TipoAtividade({ onSave, onNavigate, onExitDailyRecord }: PropsTi
                     required
                   />
                   <span className="text-lg font-medium">{activity}</span>
+                  <OptionPhoto label={activity} />
                 </label>
               ))}
               
@@ -97,7 +114,7 @@ export function TipoAtividade({ onSave, onNavigate, onExitDailyRecord }: PropsTi
             <button
               type="button"
               onClick={() => onNavigate("register-confirm")}
-              className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="w-full text-gray-600 py-3 px-6 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft size={22} />
               Voltar

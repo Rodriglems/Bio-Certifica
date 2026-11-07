@@ -57,7 +57,7 @@ export function PerguntasAnuais({ currentYear, initial, onSave, onNavigate }: Pr
               <label className="block text-lg font-semibold text-gray-700 mb-3">
                 Houve mudanças importantes na propriedade ou na produção este ano?
               </label>
-              <div className="space-y-2">
+              <div className="option-row">
                 <label className="flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer">
                   <input
                     type="radio"

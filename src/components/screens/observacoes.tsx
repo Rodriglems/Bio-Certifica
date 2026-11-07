@@ -54,7 +54,7 @@ export function Observacoes({ onSave, onNavigate, onExitDailyRecord }: PropsObse
               <label className="block text-lg font-semibold text-gray-700 mb-3">
                 Deseja registrar algo?
               </label>
-              <div className="space-y-2">
+              <div className="option-row">
                 <label className="flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer">
                   <input
                     type="radio"
@@ -107,7 +107,7 @@ export function Observacoes({ onSave, onNavigate, onExitDailyRecord }: PropsObse
             <button
               type="button"
               onClick={() => onNavigate("field-conditions")}
-              className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="w-full text-gray-600 py-3 px-6 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft size={22} />
               Voltar

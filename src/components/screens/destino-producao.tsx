@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { OptionPhoto } from "../option-photo";
 import { ArrowLeft, ArrowRight, TrendingUp, X } from "lucide-react";
 import { Screen, DailyRecord } from "../../App";
 import { Button } from "../ui/button";
@@ -66,8 +67,7 @@ export function DestinoProducao({ onSave, onNavigate, currentRecord, onExitDaily
               {destinations.map((dest) => (
                 <label
                   key={dest}
-                  className="flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer transition-colors"
-                >
+                  className="option-card flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer transition-colors">
                   <input
                     type="radio"
                     name="destination"
@@ -78,6 +78,7 @@ export function DestinoProducao({ onSave, onNavigate, currentRecord, onExitDaily
                     required
                   />
                   <span className="text-lg font-medium">{dest}</span>
+                  <OptionPhoto label={dest} />
                 </label>
               ))}
             </div>
@@ -92,7 +93,7 @@ export function DestinoProducao({ onSave, onNavigate, currentRecord, onExitDaily
             <button
               type="button"
               onClick={() => onNavigate("production-location")}
-              className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="w-full text-gray-600 py-3 px-6 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft size={22} />
               Voltar
