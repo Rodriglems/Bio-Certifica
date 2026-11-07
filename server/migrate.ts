@@ -30,14 +30,18 @@ async function listMigrationFiles(migrationsDir: string): Promise<string[]> {
 }
 
 async function applyMigration(filename: string, sql: string) {
-  await pool.query('BEGIN');
+  // A transação precisa ficar em uma única conexão: cada pool.query pode usar outra.
+  const client = await pool.connect();
   try {
-    await pool.query(sql);
-    await pool.query('INSERT INTO schema_migrations(filename) VALUES ($1)', [filename]);
-    await pool.query('COMMIT');
+    await client.query('BEGIN');
+    await client.query(sql);
+    await client.query('INSERT INTO schema_migrations(filename) VALUES ($1)', [filename]);
+    await client.query('COMMIT');
   } catch (error) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => undefined);
     throw error;
+  } finally {
+    client.release();
   }
 }
 

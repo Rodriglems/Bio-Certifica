@@ -163,6 +163,18 @@ export type AppDataResponse = {
   };
 };
 
+export type AuditData = {
+  deletedRecords: Array<{
+    id: string;
+    date: string;
+    activityType: string;
+    product?: string;
+    deletedAt: string;
+    reason: string | null;
+  }>;
+  harvests: Array<Harvest & { createdAt: string | null }>;
+};
+
 export const api = {
   setAuthToken(token: string | null) {
     setInternalAuthToken(token);
@@ -258,24 +270,27 @@ export const api = {
     });
   },
 
-  async saveHarvest(harvest: Harvest) {
+  async saveHarvest(harvest: Harvest, signal?: AbortSignal) {
     return request<{ ok: true; safraId: string }>("/api/safra", {
       method: "PUT",
       body: JSON.stringify(harvest),
+      signal,
     });
   },
 
-  async saveAnnualAnswers(answers: RespostasAnuais) {
+  async saveAnnualAnswers(answers: RespostasAnuais, signal?: AbortSignal) {
     return request<{ ok: true }>("/api/respostas-anuais", {
       method: "PUT",
       body: JSON.stringify(answers),
+      signal,
     });
   },
 
-  async saveDailyRecord(record: DailyRecord) {
+  async saveDailyRecord(record: DailyRecord, signal?: AbortSignal) {
     return request<{ ok: true; registroId: string }>("/api/registros-diarios", {
       method: "POST",
       body: JSON.stringify(record),
+      signal,
     });
   },
 
@@ -291,9 +306,15 @@ export const api = {
     return result;
   },
 
-  async deleteDailyRecord(id: string) {
+  async deleteDailyRecord(id: string, reason: string) {
     return request<{ ok: true }>(`/api/registros-diarios/${encodeURIComponent(id)}`, {
       method: "DELETE",
+      body: JSON.stringify({ reason }),
     });
+  },
+
+  async getAuditData(): Promise<AuditData> {
+    const { deletedRecords, harvests } = await request<AuditData & { ok: true }>("/api/auditoria");
+    return { deletedRecords, harvests };
   },
 };

@@ -1,398 +1,462 @@
+import { Capacitor } from "@capacitor/core";
 import type { AppData, DailyRecord } from "../App";
+import type { AuditData } from "./api";
+import { DESTINATION_NOT_APPLICABLE, isHarvestActivity, parseQuantity, recordCode } from "./record-format";
 
-const colors = {
-  pageBg: "#f5fbf5",
-  headerBg: "#14532d",
-  headerAccent: "#22c55e",
-  cardBg: "#ffffff",
-  cardBorder: "#d1fae5",
-  textPrimary: "#14532d",
-  textSecondary: "#3f3f46",
-  textMuted: "#71717a",
-  tagBg: "#ecfdf3",
-  tagText: "#15803d",
-  divider: "#bbf7d0",
-};
+// No app instalado a WebView ignora downloads de blob: o PDF é salvo e aberto no menu de compartilhar.
+async function shareNativePdf(blob: Blob, fileName: string) {
+  const [{ Filesystem, Directory }, { Share }] = await Promise.all([
+    import("@capacitor/filesystem"),
+    import("@capacitor/share"),
+  ]);
 
-const formatShortDateTime = (iso: string) => {
-  const date = new Date(iso);
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-};
+  const data = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = () => reject(reader.error ?? new Error("Falha ao ler o PDF"));
+    reader.readAsDataURL(blob);
+  });
 
-const safe = (value: unknown) => (typeof value === "string" ? value : value ? String(value) : "-");
+  const { uri } = await Filesystem.writeFile({ path: fileName, data, directory: Directory.Cache });
 
-async function generateAuditPdf(appData: AppData) {
-  const reactPdf = await import("@react-pdf/renderer");
-  const { Document, Page, StyleSheet, Text, View, pdf } = reactPdf;
+  try {
+    await Share.share({ title: "Caderno de campo Bio Certifica", url: uri, dialogTitle: "Salvar ou enviar o caderno de campo" });
+  } catch (error) {
+    // Fechar o menu sem escolher um aplicativo não é erro.
+    if (!/cancel/i.test(error instanceof Error ? error.message : String(error))) throw error;
+  }
+}
+
+const INK = "#1f2937";
+const MUTED = "#4b5563";
+const RULE = "#9ca3af";
+const LIGHT_RULE = "#d1d5db";
+const HEAD_BG = "#e5e7eb";
+const GREEN = "#14532d";
+
+const dateFormat = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+const dateTimeFormat = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const formatDate = (iso: string) => dateFormat.format(new Date(iso));
+const formatDateTime = (iso: string) => dateTimeFormat.format(new Date(iso));
+const formatNumber = (value: number) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value);
+
+const DESTINATIONS = ["Consumo da família", "Venda", "Doação", "Troca", "Armazenado"];
+
+interface HarvestTotal {
+  product: string;
+  unit: string;
+  harvested: number;
+  byDestination: Record<string, number>;
+  entries: number;
+}
+
+function buildTotals(records: DailyRecord[]) {
+  const totals = new Map<string, HarvestTotal>();
+  let unreadable = 0;
+
+  for (const record of records) {
+    if (!isHarvestActivity(record.activityType) || !record.production) continue;
+    const quantity = parseQuantity(record.production.quantity);
+    if (quantity === null) {
+      unreadable++;
+      continue;
+    }
+    const product = record.production.product || "-";
+    const unit = record.production.unit || "-";
+    const key = `${product}|${unit}`.toLowerCase();
+    const total = totals.get(key) ?? { product, unit, harvested: 0, byDestination: {}, entries: 0 };
+    total.harvested += quantity;
+    total.entries++;
+    total.byDestination[record.destination] = (total.byDestination[record.destination] ?? 0) + quantity;
+    totals.set(key, total);
+  }
+
+  return { rows: [...totals.values()].sort((a, b) => a.product.localeCompare(b.product)), unreadable };
+}
+
+function splitGps(directions: string | undefined) {
+  const text = directions ?? "";
+  const match = text.match(/GPS da propriedade: Latitude (-?[\d.]+), Longitude (-?[\d.]+)/);
+  if (!match) return { coordinates: null, directions: text.trim() };
+  return {
+    coordinates: `Latitude ${match[1]}, Longitude ${match[2]}`,
+    directions: text.replace(match[0], "").trim(),
+  };
+}
+
+function describeProduction(record: DailyRecord) {
+  const lines: string[] = [];
+  const production = record.production;
+  if (production?.product) {
+    const amount = [production.quantity, production.unit].filter(Boolean).join(" ");
+    lines.push(amount ? `${production.product}: ${amount}` : `Cultura: ${production.product}`);
+  }
+  if (record.destination && record.destination !== DESTINATION_NOT_APPLICABLE) {
+    lines.push(`Destino: ${record.destination}`);
+  }
+  const details = record.destinationDetails;
+  if (details?.saleValue) lines.push(`Valor de venda: ${details.saleValue}`);
+  if (details?.buyer) lines.push(`Comprador: ${details.buyer}`);
+  if (details?.exchangeItem) lines.push(`Troca por: ${details.exchangeItem}`);
+  if (details?.donationRecipient) lines.push(`Doação para: ${details.donationRecipient}`);
+  return lines;
+}
+
+function describeCosts(record: DailyRecord) {
+  const costs = record.costs;
+  if (!costs) return ["Não informado"];
+  if (!costs.hasExpense) return ["Sem gasto"];
+  const lines = [costs.type || "Gasto"];
+  if (costs.value) lines.push(`Valor: ${costs.value}`);
+  if (costs.purchaseLocation) lines.push(`Comprado em: ${costs.purchaseLocation}`);
+  return lines;
+}
+
+function describeLabor(record: DailyRecord) {
+  const labor = record.labor;
+  const lines = [labor?.type || "-", `Pessoas: ${labor?.peopleCount || "-"}`];
+  lines.push(labor?.hadPayment ? `Pago: ${labor.paymentValue || "Sim"}` : "Sem pagamento");
+  return lines;
+}
+
+function describeField(record: DailyRecord) {
+  const field = record.fieldConditions;
+  const lines = [`Clima: ${field?.weather || "-"}`, `Ocorrências: ${field?.occurrences || "-"}`];
+  if (field?.pestOrDiseaseFound) lines.push(`Praga ou doença: ${field.pestOrDiseaseFound}`);
+  if (field?.appliedProduct) lines.push(`Produto aplicado: ${field.appliedProduct}`);
+  if (field?.appliedDose) lines.push(`Quantidade e área: ${field.appliedDose}`);
+  if (field?.homemadeProductPreparation) lines.push(`Preparo: ${field.homemadeProductPreparation}`);
+  return lines;
+}
+
+async function generateAuditPdf(appData: AppData, audit: AuditData | null) {
+  const { Document, Font, Page, StyleSheet, Text, View, pdf } = await import("@react-pdf/renderer");
+
+  // Sem hifenização: palavras cortadas em colunas estreitas atrapalham a leitura e a busca no PDF.
+  Font.registerHyphenationCallback((word) => [word]);
 
   const styles = StyleSheet.create({
     page: {
-      backgroundColor: colors.pageBg,
-      paddingTop: 0,
-      paddingHorizontal: 28,
-      paddingBottom: 28,
-      fontSize: 10,
-      color: colors.textSecondary,
+      paddingTop: 58,
+      paddingHorizontal: 30,
+      paddingBottom: 34,
+      fontSize: 9,
+      color: INK,
       fontFamily: "Helvetica",
+      lineHeight: 1.3,
     },
-    headerBand: {
-      backgroundColor: colors.headerBg,
-      paddingTop: 20,
-      paddingBottom: 18,
-      paddingHorizontal: 22,
-      marginHorizontal: -28,
-      marginBottom: 14,
-      borderBottomLeftRadius: 14,
-      borderBottomRightRadius: 14,
+    recordsPage: { paddingTop: 76 },
+    running: {
+      position: "absolute",
+      top: 22,
+      left: 30,
+      right: 30,
     },
-    topAccent: {
-      width: 74,
-      height: 5,
-      borderRadius: 999,
-      backgroundColor: colors.headerAccent,
-      marginBottom: 10,
-    },
-    title: {
-      color: "#f0fdf4",
-      fontSize: 18,
-      fontWeight: 700,
-      marginBottom: 4,
-    },
-    subtitle: {
-      color: "#dcfce7",
-      fontSize: 10,
-    },
-    metaRow: {
-      flexDirection: "row",
-      gap: 8,
-      marginTop: 12,
-    },
-    metaPill: {
-      backgroundColor: "#166534",
-      borderRadius: 999,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-    },
-    metaText: {
-      color: "#ecfdf5",
-      fontSize: 9,
-    },
-    sectionCard: {
-      backgroundColor: colors.cardBg,
-      border: `1 solid ${colors.cardBorder}`,
-      borderRadius: 12,
-      paddingVertical: 12,
-      paddingHorizontal: 12,
-      marginBottom: 10,
-    },
-    sectionTitleRow: {
+    runningRow: {
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 8,
+      alignItems: "flex-end",
+      borderBottom: `1.5 solid ${GREEN}`,
+      paddingBottom: 5,
     },
-    sectionTitle: {
-      fontSize: 12,
-      fontWeight: 700,
-      color: colors.textPrimary,
-    },
-    sectionBadge: {
-      backgroundColor: colors.tagBg,
-      color: colors.tagText,
-      borderRadius: 999,
-      fontSize: 8,
-      fontWeight: 700,
-      paddingHorizontal: 7,
-      paddingVertical: 3,
-    },
-    row: {
-      flexDirection: "row",
-      marginBottom: 5,
-    },
-    label: {
-      width: "34%",
-      color: colors.textMuted,
-      fontSize: 9,
-      paddingRight: 6,
-    },
-    value: {
-      width: "66%",
-      color: colors.textSecondary,
-      fontSize: 10,
-      lineHeight: 1.35,
-    },
-    divider: {
-      borderTop: `1 solid ${colors.divider}`,
-      marginTop: 2,
-      marginBottom: 6,
-    },
-    recordCard: {
-      backgroundColor: "#ffffff",
-      border: `1 solid ${colors.cardBorder}`,
-      borderRadius: 12,
-      paddingVertical: 10,
-      paddingHorizontal: 10,
-      marginBottom: 8,
-    },
-    recordHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 7,
-    },
-    recordDate: {
-      fontSize: 9,
-      color: colors.textMuted,
-    },
-    recordType: {
-      backgroundColor: colors.tagBg,
-      color: colors.tagText,
-      borderRadius: 999,
-      fontSize: 8,
-      fontWeight: 700,
-      paddingHorizontal: 6,
-      paddingVertical: 3,
-      maxWidth: "58%",
-      textAlign: "center",
-    },
-    fieldText: {
-      fontSize: 9.5,
-      color: colors.textSecondary,
-      lineHeight: 1.35,
-      marginBottom: 3,
-    },
-    fieldLabel: {
-      color: colors.textMuted,
-    },
-    emptyText: {
-      color: colors.textMuted,
-      fontSize: 10,
-    },
+    runningTitle: { fontSize: 11, fontFamily: "Helvetica-Bold", color: GREEN },
+    runningMeta: { fontSize: 8.5, color: MUTED },
     footer: {
       position: "absolute",
-      bottom: 14,
-      left: 28,
-      right: 28,
-      borderTop: `1 solid ${colors.divider}`,
-      paddingTop: 6,
+      bottom: 16,
+      left: 30,
+      right: 30,
       flexDirection: "row",
       justifyContent: "space-between",
       fontSize: 8,
-      color: colors.textMuted,
+      color: MUTED,
     },
+    title: { fontSize: 18, lineHeight: 1.2, fontFamily: "Helvetica-Bold", color: GREEN, marginBottom: 6 },
+    subtitle: { fontSize: 10, color: MUTED, marginBottom: 12 },
+    columns: { flexDirection: "row", gap: 22 },
+    column: { flex: 1 },
+    section: { marginBottom: 12 },
+    heading: { fontSize: 11, fontFamily: "Helvetica-Bold", color: GREEN, marginBottom: 5 },
+    fieldRow: { flexDirection: "row", marginBottom: 2 },
+    fieldLabel: { width: 96, color: MUTED },
+    fieldValue: { flex: 1 },
+    note: { fontSize: 8.5, color: MUTED, marginTop: 4 },
+    warning: { fontSize: 9, fontFamily: "Helvetica-Bold", marginBottom: 8 },
+    tableHead: {
+      flexDirection: "row",
+      backgroundColor: HEAD_BG,
+      borderTop: `1 solid ${RULE}`,
+      borderBottom: `1 solid ${RULE}`,
+    },
+    tableRow: { flexDirection: "row", borderBottom: `0.5 solid ${LIGHT_RULE}` },
+    headCell: { fontFamily: "Helvetica-Bold", fontSize: 8.5, paddingVertical: 3, paddingHorizontal: 4 },
+    cell: { paddingVertical: 3, paddingHorizontal: 4 },
+    numberCell: { textAlign: "right" },
+    code: { fontFamily: "Helvetica-Bold" },
+    small: { fontSize: 7.5, color: MUTED },
+    pendingMark: { fontSize: 7.5, fontFamily: "Helvetica-Bold" },
+    observation: {
+      paddingHorizontal: 4,
+      paddingBottom: 4,
+      marginTop: -1,
+    },
+    declaration: { marginBottom: 26, fontSize: 10, lineHeight: 1.45 },
+    signatures: { flexDirection: "row", gap: 28, marginTop: 8 },
+    signature: { flex: 1, borderTop: `1 solid ${INK}`, paddingTop: 4, fontSize: 9 },
   });
 
-  const dataRow = (label: string, value: unknown) => (
-    <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{safe(value)}</Text>
-    </View>
-  );
-
-  const RecordCard = ({ record, index }: { record: DailyRecord; index: number }) => (
-    <View style={styles.recordCard} wrap={false}>
-      <View style={styles.recordHeader}>
-        <Text style={styles.recordDate}>Registro {index + 1} • {formatShortDateTime(record.date)}</Text>
-        <Text style={styles.recordType}>{safe(record.activityType)}</Text>
-      </View>
-
-      {record.production && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Produção: </Text>
-          {safe(record.production.product)} • {safe(record.production.quantity)} {safe(record.production.unit)}
-        </Text>
-      )}
-
-      <Text style={styles.fieldText}>
-        <Text style={styles.fieldLabel}>Local: </Text>
-        {safe(record.location)}
-      </Text>
-
-      <Text style={styles.fieldText}>
-        <Text style={styles.fieldLabel}>Destino: </Text>
-        {safe(record.destination)}
-      </Text>
-
-      {record.destinationDetails?.saleValue && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Valor de venda: </Text>
-          {safe(record.destinationDetails.saleValue)}
-        </Text>
-      )}
-
-      {record.destinationDetails?.buyer && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Comprador: </Text>
-          {safe(record.destinationDetails.buyer)}
-        </Text>
-      )}
-
-      {record.destinationDetails?.exchangeItem && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Troca por: </Text>
-          {safe(record.destinationDetails.exchangeItem)}
-        </Text>
-      )}
-
-      {record.destinationDetails?.donationRecipient && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Doação para: </Text>
-          {safe(record.destinationDetails.donationRecipient)}
-        </Text>
-      )}
-
-      {record.costs && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Despesa: </Text>
-          {record.costs.hasExpense ? "Sim" : "Não"}
-          {record.costs.type ? ` • ${safe(record.costs.type)}` : ""}
-          {record.costs.value ? ` • ${safe(record.costs.value)}` : ""}
-        </Text>
-      )}
-
-      <Text style={styles.fieldText}>
-        <Text style={styles.fieldLabel}>Mão de obra: </Text>
-        {safe(record.labor?.type)} • Pessoas: {safe(record.labor?.peopleCount)} • Pagamento: {record.labor?.hadPayment ? "Sim" : "Não"}
-        {record.labor?.paymentValue ? ` (${safe(record.labor.paymentValue)})` : ""}
-      </Text>
-
-      <Text style={styles.fieldText}>
-        <Text style={styles.fieldLabel}>Clima: </Text>
-        {safe(record.fieldConditions?.weather)}
-      </Text>
-
-      <Text style={styles.fieldText}>
-        <Text style={styles.fieldLabel}>Ocorrências: </Text>
-        {safe(record.fieldConditions?.occurrences)}
-      </Text>
-
-      {record.fieldConditions?.occurrenceDetails && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Detalhes: </Text>
-          {safe(record.fieldConditions.occurrenceDetails)}
-        </Text>
-      )}
-
-      {record.fieldConditions?.pestOrDiseaseFound && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Praga/Doença encontrada: </Text>
-          {safe(record.fieldConditions.pestOrDiseaseFound)}
-        </Text>
-      )}
-
-      {record.fieldConditions?.appliedProduct && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Produto aplicado: </Text>
-          {safe(record.fieldConditions.appliedProduct)}
-        </Text>
-      )}
-
-      {record.fieldConditions?.homemadeProductPreparation && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Preparo do produto: </Text>
-          {safe(record.fieldConditions.homemadeProductPreparation)}
-        </Text>
-      )}
-
-      {record.observations && (
-        <Text style={styles.fieldText}>
-          <Text style={styles.fieldLabel}>Observações: </Text>
-          {safe(record.observations)}
-        </Text>
-      )}
-    </View>
-  );
-
-  const currentYear = new Date().getFullYear();
-  const annual = appData.annual?.[String(currentYear)];
+  const farmer = appData.farmer;
   const generatedAt = new Date().toISOString();
+  const records = [...appData.records].sort((a, b) => a.date.localeCompare(b.date));
+  const pendingCount = records.filter((record) => record.syncStatus === "pending").length;
+  const { rows: totals, unreadable } = buildTotals(records);
+  const { coordinates, directions } = splitGps(farmer?.accessDirections);
+  const annualAnswers = Object.values(appData.annual ?? {}).sort((a, b) => a.year - b.year);
+  const harvests = audit?.harvests.length
+    ? audit.harvests
+    : appData.harvest
+      ? [{ ...appData.harvest, createdAt: null as string | null }]
+      : [];
+  const period = records.length
+    ? `${formatDate(records[0].date)} a ${formatDate(records[records.length - 1].date)}`
+    : "Sem registros";
+
+  const Field = ({ label, value }: { label: string; value?: string | null }) =>
+    value ? (
+      <View style={styles.fieldRow}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        <Text style={styles.fieldValue}>{value}</Text>
+      </View>
+    ) : null;
+
+  const Running = () => (
+    <View style={styles.running} fixed>
+      <View style={styles.runningRow}>
+        <Text style={styles.runningTitle}>Caderno de campo</Text>
+        <Text style={styles.runningMeta}>
+          {farmer?.name ?? "Produtor não informado"}, {farmer?.municipality ?? "-"}. Período: {period}
+        </Text>
+      </View>
+    </View>
+  );
+
+  const Footer = () => (
+    <View style={styles.footer} fixed>
+      <Text>Bio Certifica. Gerado em {formatDateTime(generatedAt)}</Text>
+      <Text render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`} />
+    </View>
+  );
+
+  const RECORD_COLUMNS = [
+    { label: "Código", width: "11%" },
+    { label: "Data", width: "10%" },
+    { label: "Atividade", width: "9%" },
+    { label: "Local", width: "8%" },
+    { label: "Produção e destino", width: "18%" },
+    { label: "Gastos e insumos", width: "14%" },
+    { label: "Mão de obra", width: "11%" },
+    { label: "Clima e ocorrências", width: "19%" },
+  ];
+
+  const lines = (values: string[]) => values.map((line, index) => <Text key={index}>{line}</Text>);
+
+  const RecordRow = ({ record }: { record: DailyRecord }) => (
+    <View style={styles.tableRow} wrap={false}>
+      <View style={{ width: "100%" }}>
+        <View style={{ flexDirection: "row" }}>
+          <View style={[styles.cell, { width: "11%" }]}>
+            <Text style={styles.code}>{recordCode(record.id)}</Text>
+            {record.syncStatus === "pending" && <Text style={styles.pendingMark}>Não enviado</Text>}
+          </View>
+          <View style={[styles.cell, { width: "10%" }]}>
+            <Text>{formatDate(record.date)}</Text>
+            {record.loggedAt && <Text style={styles.small}>Lançado em {formatDateTime(record.loggedAt)}</Text>}
+          </View>
+          <View style={[styles.cell, { width: "9%" }]}><Text>{record.activityType}</Text></View>
+          <View style={[styles.cell, { width: "8%" }]}><Text>{record.location}</Text></View>
+          <View style={[styles.cell, { width: "18%" }]}>{lines(describeProduction(record))}</View>
+          <View style={[styles.cell, { width: "14%" }]}>{lines(describeCosts(record))}</View>
+          <View style={[styles.cell, { width: "11%" }]}>{lines(describeLabor(record))}</View>
+          <View style={[styles.cell, { width: "19%" }]}>{lines(describeField(record))}</View>
+        </View>
+        {record.observations && (
+          <Text style={styles.observation}>Observações: {record.observations}</Text>
+        )}
+      </View>
+    </View>
+  );
 
   const doc = (
-    <Document title="Relatório de Plano de Manejo Orgâncico" author="Bio Certifica">
-      <Page size="A4" style={styles.page}>
-        <View style={styles.headerBand}>
-          <View style={styles.topAccent} />
-          <Text style={styles.title}>Relatório de Plano de Manejo Orgâncico</Text>
-          <Text style={styles.subtitle}>Aplicação Bio Certifica</Text>
+    <Document title="Caderno de campo" author="Bio Certifica">
+      <Page size="A4" orientation="landscape" style={styles.page}>
+        <Running />
+        <Footer />
+        <Text style={styles.title}>Caderno de campo</Text>
+        <Text style={styles.subtitle}>
+          Registros de {period}, {records.length} {records.length === 1 ? "atividade" : "atividades"}
+        </Text>
 
-          <View style={styles.metaRow}>
-            <View style={styles.metaPill}>
-              <Text style={styles.metaText}>Gerado em {formatShortDateTime(generatedAt)}</Text>
+        {pendingCount > 0 && (
+          <Text style={styles.warning}>
+            Atenção: {pendingCount} {pendingCount === 1 ? "registro ainda não foi enviado" : "registros ainda não foram enviados"} ao servidor. Estão marcados como "Não enviado".
+          </Text>
+        )}
+        {!audit && (
+          <Text style={styles.warning}>
+            Relatório gerado sem conexão: os registros excluídos e o histórico de safras não puderam ser consultados.
+          </Text>
+        )}
+
+        <View style={styles.columns}>
+          <View style={[styles.section, styles.column]}>
+            <Text style={styles.heading}>Produtor</Text>
+            {farmer ? (
+              <>
+                <Field label="Nome" value={farmer.name} />
+                <Field label="Comunidade" value={farmer.community} />
+                <Field label="Município" value={farmer.municipality} />
+                <Field label="Telefone" value={farmer.phone} />
+                <Field label="Tamanho da área" value={farmer.propertySize} />
+                <Field label="Produção" value={farmer.produces} />
+                <Field label="Coordenadas (GPS)" value={coordinates} />
+                <Field label="Como chegar" value={directions} />
+              </>
+            ) : (
+              <Text>Sem cadastro de produtor.</Text>
+            )}
+          </View>
+
+          <View style={[styles.section, styles.column]}>
+            <Text style={styles.heading}>Mudanças informadas a cada ano</Text>
+            {annualAnswers.length === 0 && <Text>Nenhuma resposta anual registrada.</Text>}
+            {annualAnswers.map((answer) => (
+              <Field
+                key={answer.year}
+                label={String(answer.year)}
+                value={answer.hadChanges ? `Houve mudanças. ${answer.changesDetails ?? ""}`.trim() : "Sem mudanças"}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.section} wrap={false}>
+          <Text style={styles.heading}>Safras informadas</Text>
+          <View style={styles.tableHead}>
+            {["Informada em", "Cultura principal", "Tipo de semente", "Sistema de cultivo", "Área plantada"].map((label) => (
+              <Text key={label} style={[styles.headCell, { width: "20%" }]}>{label}</Text>
+            ))}
+          </View>
+          {harvests.length === 0 && <Text style={styles.cell}>Sem cadastro de safra.</Text>}
+          {harvests.map((harvest, index) => (
+            <View key={index} style={styles.tableRow}>
+              <Text style={[styles.cell, { width: "20%" }]}>{harvest.createdAt ? formatDate(harvest.createdAt) : "-"}</Text>
+              <Text style={[styles.cell, { width: "20%" }]}>{harvest.mainCrop}</Text>
+              <Text style={[styles.cell, { width: "20%" }]}>{harvest.seedType}</Text>
+              <Text style={[styles.cell, { width: "20%" }]}>{harvest.cultivationSystem}</Text>
+              <Text style={[styles.cell, { width: "20%" }]}>{harvest.plantedArea}</Text>
             </View>
-            <View style={styles.metaPill}>
-              <Text style={styles.metaText}>{appData.records.length} registros</Text>
+          ))}
+        </View>
+
+        <View style={styles.section} wrap={false}>
+          <Text style={styles.heading}>Totais colhidos e destino</Text>
+          <View style={styles.tableHead}>
+            <Text style={[styles.headCell, { width: "22%" }]}>Produto</Text>
+            <Text style={[styles.headCell, { width: "8%" }]}>Unidade</Text>
+            <Text style={[styles.headCell, styles.numberCell, { width: "10%" }]}>Colhido</Text>
+            {DESTINATIONS.map((destination) => (
+              <Text key={destination} style={[styles.headCell, styles.numberCell, { width: "12%" }]}>{destination}</Text>
+            ))}
+          </View>
+          {totals.length === 0 && <Text style={styles.cell}>Nenhuma colheita com quantidade registrada.</Text>}
+          {totals.map((total) => (
+            <View key={`${total.product}-${total.unit}`} style={styles.tableRow}>
+              <Text style={[styles.cell, { width: "22%" }]}>{total.product}</Text>
+              <Text style={[styles.cell, { width: "8%" }]}>{total.unit}</Text>
+              <Text style={[styles.cell, styles.numberCell, styles.code, { width: "10%" }]}>{formatNumber(total.harvested)}</Text>
+              {DESTINATIONS.map((destination) => (
+                <Text key={destination} style={[styles.cell, styles.numberCell, { width: "12%" }]}>
+                  {total.byDestination[destination] ? formatNumber(total.byDestination[destination]) : "-"}
+                </Text>
+              ))}
             </View>
+          ))}
+          {unreadable > 0 && (
+            <Text style={styles.note}>
+              {unreadable} {unreadable === 1 ? "colheita ficou" : "colheitas ficaram"} fora da soma porque a quantidade não é um número.
+            </Text>
+          )}
+        </View>
+      </Page>
+
+      <Page size="A4" orientation="landscape" style={[styles.page, styles.recordsPage]}>
+        <View style={styles.running} fixed>
+          <View style={styles.runningRow}>
+            <Text style={styles.runningTitle}>Caderno de campo: registros em ordem de data</Text>
+            <Text style={styles.runningMeta}>
+              {farmer?.name ?? "Produtor não informado"}, {farmer?.municipality ?? "-"}. Período: {period}
+            </Text>
+          </View>
+          <View style={[styles.tableHead, { marginTop: 8 }]}>
+            {RECORD_COLUMNS.map((column) => (
+              <Text key={column.label} style={[styles.headCell, { width: column.width }]}>{column.label}</Text>
+            ))}
           </View>
         </View>
+        <Footer />
+        {records.length === 0 && <Text>Nenhum registro diário encontrado.</Text>}
+        {records.map((record) => <RecordRow key={record.id} record={record} />)}
+      </Page>
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitle}>Produtor</Text>
-            <Text style={styles.sectionBadge}>Cadastro</Text>
-          </View>
-
-          {appData.farmer ? (
+      <Page size="A4" orientation="landscape" style={styles.page}>
+        <Running />
+        <Footer />
+        <View style={styles.section}>
+          <Text style={styles.heading}>Registros excluídos</Text>
+          {!audit ? (
+            <Text>Não consultados: relatório gerado sem conexão.</Text>
+          ) : audit.deletedRecords.length === 0 ? (
+            <Text>Nenhum registro foi excluído.</Text>
+          ) : (
             <>
-              {dataRow("Nome", appData.farmer.name)}
-              {dataRow("Comunidade", appData.farmer.community)}
-              {dataRow("Município", appData.farmer.municipality)}
-              {appData.farmer.phone ? dataRow("Telefone", appData.farmer.phone) : null}
-              {appData.farmer.propertySize ? dataRow("Tamanho", appData.farmer.propertySize) : null}
-              {appData.farmer.produces ? dataRow("Produção", appData.farmer.produces) : null}
-              {appData.farmer.accessDirections ? dataRow("Como chegar", appData.farmer.accessDirections) : null}
+              <View style={styles.tableHead}>
+                <Text style={[styles.headCell, { width: "10%" }]}>Código</Text>
+                <Text style={[styles.headCell, { width: "11%" }]}>Data</Text>
+                <Text style={[styles.headCell, { width: "26%" }]}>Atividade e cultura</Text>
+                <Text style={[styles.headCell, { width: "15%" }]}>Excluído em</Text>
+                <Text style={[styles.headCell, { width: "38%" }]}>Motivo</Text>
+              </View>
+              {audit.deletedRecords.map((record) => (
+                <View key={record.id} style={styles.tableRow} wrap={false}>
+                  <Text style={[styles.cell, styles.code, { width: "10%" }]}>{recordCode(record.id)}</Text>
+                  <Text style={[styles.cell, { width: "11%" }]}>{formatDate(record.date)}</Text>
+                  <Text style={[styles.cell, { width: "26%" }]}>
+                    {[record.activityType, record.product].filter(Boolean).join(": ")}
+                  </Text>
+                  <Text style={[styles.cell, { width: "15%" }]}>{formatDateTime(record.deletedAt)}</Text>
+                  <Text style={[styles.cell, { width: "38%" }]}>{record.reason || "Excluído antes da exigência de motivo"}</Text>
+                </View>
+              ))}
             </>
-          ) : (
-            <Text style={styles.emptyText}>Sem cadastro de produtor.</Text>
           )}
         </View>
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitle}>Safra / Ano</Text>
-            <Text style={styles.sectionBadge}>{currentYear}</Text>
+        <View style={[styles.section, { marginTop: 14 }]} wrap={false}>
+          <Text style={styles.heading}>Declaração do produtor</Text>
+          <Text style={styles.declaration}>
+            Declaro que as informações deste caderno de campo são verdadeiras e correspondem às atividades realizadas na minha unidade de produção no período indicado.
+          </Text>
+          <View style={styles.signatures}>
+            <Text style={styles.signature}>Assinatura do produtor</Text>
+            <Text style={styles.signature}>Data</Text>
+            <Text style={styles.signature}>Responsável pela verificação</Text>
           </View>
-
-          {appData.harvest ? (
-            <>
-              {dataRow("Cultura principal", appData.harvest.mainCrop)}
-              {dataRow("Tipo de semente", appData.harvest.seedType)}
-              {dataRow("Sistema de cultivo", appData.harvest.cultivationSystem)}
-              {dataRow("Área plantada", appData.harvest.plantedArea)}
-              {annual ? (
-                <>
-                  <View style={styles.divider} />
-                  {dataRow("Atualização anual", annual.hadChanges ? "Houve mudanças" : "Sem mudanças")}
-                  {annual.changesDetails ? dataRow("Detalhes", annual.changesDetails) : null}
-                </>
-              ) : null}
-            </>
-          ) : (
-            <Text style={styles.emptyText}>Sem cadastro de safra.</Text>
-          )}
-        </View>
-
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitle}>Registros Diários</Text>
-            <Text style={styles.sectionBadge}>Linha do tempo</Text>
-          </View>
-
-          {!appData.records.length ? (
-            <Text style={styles.emptyText}>Nenhum registro diário encontrado.</Text>
-          ) : (
-            appData.records.map((record, index) => <RecordCard key={`${record.id}-${record.date}`} record={record} index={index} />)
-          )}
-        </View>
-
-        <View style={styles.footer} fixed>
-          <Text>Bio Certifica</Text>
-          <Text render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`} />
         </View>
       </Page>
     </Document>
@@ -400,22 +464,21 @@ async function generateAuditPdf(appData: AppData) {
 
   const blob = await pdf(doc).toBlob();
 
-  const fileDate = new Intl.DateTimeFormat("pt-BR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-    .format(new Date())
-    .replaceAll("/", "-");
+  const fileDate = dateFormat.format(new Date()).replaceAll("/", "-");
+  const fileName = `caderno-de-campo-${fileDate}.pdf`;
+  if (Capacitor.isNativePlatform()) {
+    await shareNativePdf(blob, fileName);
+    return;
+  }
 
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `relatorio-agroecologia-${fileDate}.pdf`;
+  link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
 }
 
-export async function downloadAuditPdf(appData: AppData) {
-  await generateAuditPdf(appData);
+export async function downloadAuditPdf(appData: AppData, audit: AuditData | null) {
+  await generateAuditPdf(appData, audit);
 }

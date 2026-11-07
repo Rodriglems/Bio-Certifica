@@ -1,4 +1,4 @@
-package br.com.agroecologia.app;
+package br.com.biocertifica.app;
 
 import com.getcapacitor.BridgeActivity;
 

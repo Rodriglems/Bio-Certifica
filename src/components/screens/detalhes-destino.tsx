@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { OptionPhoto } from "../option-photo";
 import { ArrowLeft, ArrowRight, FileText, X } from "lucide-react";
 import { Screen, DailyRecord } from "../../App";
 import { Button } from "../ui/button";
@@ -78,7 +79,7 @@ export function DetalhesDestino({ onSave, onNavigate, destination, onExitDailyRe
                   </label>
                   <div className="space-y-2">
                     {saleValues.map((value) => (
-                      <label key={value} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                      <label key={value} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                         <input
                           type="radio"
                           name="saleValue"
@@ -89,6 +90,7 @@ export function DetalhesDestino({ onSave, onNavigate, destination, onExitDailyRe
                           required
                         />
                         <span className="text-lg">{value}</span>
+                        <OptionPhoto label={value} />
                       </label>
                     ))}
                   </div>
@@ -100,7 +102,7 @@ export function DetalhesDestino({ onSave, onNavigate, destination, onExitDailyRe
                   </label>
                   <div className="space-y-2">
                     {buyers.map((b) => (
-                      <label key={b} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                      <label key={b} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                         <input
                           type="radio"
                           name="buyer"
@@ -111,6 +113,7 @@ export function DetalhesDestino({ onSave, onNavigate, destination, onExitDailyRe
                           required
                         />
                         <span className="text-lg">{b}</span>
+                        <OptionPhoto label={b} />
                       </label>
                     ))}
                     {buyer === "Outro" && (
@@ -133,7 +136,7 @@ export function DetalhesDestino({ onSave, onNavigate, destination, onExitDailyRe
                 </label>
                 <div className="space-y-2">
                   {exchanges.map((ex) => (
-                    <label key={ex} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                    <label key={ex} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                       <input
                         type="radio"
                         name="exchangeItem"
@@ -144,6 +147,7 @@ export function DetalhesDestino({ onSave, onNavigate, destination, onExitDailyRe
                         required
                       />
                       <span className="text-lg">{ex}</span>
+                      <OptionPhoto label={ex} />
                     </label>
                   ))}
                   {exchangeItem === "Outro" && (
@@ -165,7 +169,7 @@ export function DetalhesDestino({ onSave, onNavigate, destination, onExitDailyRe
                 </label>
                 <div className="space-y-2">
                   {donations.map((don) => (
-                    <label key={don} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                    <label key={don} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                       <input
                         type="radio"
                         name="donationRecipient"
@@ -176,6 +180,7 @@ export function DetalhesDestino({ onSave, onNavigate, destination, onExitDailyRe
                         required
                       />
                       <span className="text-lg">{don}</span>
+                      <OptionPhoto label={don} />
                     </label>
                   ))}
                   {donationRecipient === "Outro" && (
@@ -200,7 +205,7 @@ export function DetalhesDestino({ onSave, onNavigate, destination, onExitDailyRe
             <button
               type="button"
               onClick={() => onNavigate("production-destination")}
-              className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="w-full text-gray-600 py-3 px-6 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft size={22} />
               Voltar

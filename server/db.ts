@@ -19,9 +19,22 @@ export const pool: Pool = connectionString
       async query() {
         throw new Error('DATABASE_URL não definido. Crie um .env com DATABASE_URL=postgres://...');
       },
+      async connect() {
+        throw new Error('DATABASE_URL não definido. Crie um .env com DATABASE_URL=postgres://...');
+      },
     }) as unknown as Pool);
 
-if (!connectionString) {
+if (connectionString) {
+  // Sem esses listeners, uma conexão derrubada (ex.: Neon fechando conexões ociosas
+  // ou reinício do Postgres) emite 'error' sem tratamento e encerra o processo da API.
+  const logConnectionError = (error: Error) => {
+    console.error('[db] erro de conexão com o Postgres:', error.message);
+  };
+  pool.on('error', logConnectionError);
+  pool.on('connect', (client) => {
+    client.on('error', logConnectionError);
+  });
+} else {
   // Mantém o servidor vivo (evita ECONNREFUSED no proxy do Vite)
   // e devolve erro 500 com mensagem clara nas rotas que usam o banco.
   console.warn('[db] DATABASE_URL não definido; rotas que usam Postgres vão falhar até configurar o .env');

@@ -34,6 +34,7 @@ Projeto web (React + Vite) com API em Node/Express e banco PostgreSQL.
 `DATABASE_URL=...` (string do Neon)
 `DATABASE_SSL=true`
 `DATABASE_SSL_REJECT_UNAUTHORIZED=true`
+`TRUST_PROXY=1`
 `CORS_ORIGINS=https://SEU_FRONT.pages.dev,http://localhost,capacitor://localhost`
 
 Observação: após vincular domínio customizado, adicione também esse domínio no `CORS_ORIGINS`.
@@ -48,7 +49,11 @@ Observação: após vincular domínio customizado, adicione também esse domíni
 - Variável de ambiente no Pages:
 `VITE_API_BASE_URL=https://SUA-API.onrender.com`
 
-### 4) Gerar APK usando API em produção
+### 4) Gerar APK
 
-`VITE_API_BASE_URL=https://SUA-API.onrender.com npm run mobile:android`
-`npm run apk:debug`
+Requer Java 21 e Android SDK (`JAVA_HOME` e `ANDROID_HOME`).
+
+- Teste com a API rodando no PC (mesmo Wi-Fi): `npm run apk:test`
+- Produção: `node scripts/build-apk.mjs --api https://SUA-API.onrender.com --release`
+
+O APK de teste libera HTTP só no build de depuração. Em produção, a API precisa de HTTPS.

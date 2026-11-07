@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { OptionPhoto } from "../option-photo";
 import { ArrowLeft, ArrowRight, DollarSign, X } from "lucide-react";
 import { Screen, DailyRecord } from "../../App";
 import { Button } from "../ui/button";
@@ -75,7 +76,7 @@ export function Custos({ onSave, onNavigate, onExitDailyRecord }: PropsCustos) {
               <label className="block text-lg font-semibold text-gray-700 mb-3">
                 Teve gasto hoje?
               </label>
-              <div className="space-y-2">
+              <div className="option-row">
                 <label className="flex items-center gap-3 p-4 border-2 border-gray-300 rounded-xl hover:bg-green-50 cursor-pointer">
                   <input
                     type="radio"
@@ -111,7 +112,7 @@ export function Custos({ onSave, onNavigate, onExitDailyRecord }: PropsCustos) {
                   </label>
                   <div className="space-y-2">
                     {types.map((t) => (
-                      <label key={t} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                      <label key={t} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                         <input
                           type="radio"
                           name="type"
@@ -122,6 +123,7 @@ export function Custos({ onSave, onNavigate, onExitDailyRecord }: PropsCustos) {
                           required
                         />
                         <span className="text-lg">{t}</span>
+                        <OptionPhoto label={t} />
                       </label>
                     ))}
                     {type === "Outro" && (
@@ -141,7 +143,7 @@ export function Custos({ onSave, onNavigate, onExitDailyRecord }: PropsCustos) {
                   </label>
                   <div className="space-y-2">
                     {values.map((v) => (
-                      <label key={v} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                      <label key={v} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                         <input
                           type="radio"
                           name="value"
@@ -152,6 +154,7 @@ export function Custos({ onSave, onNavigate, onExitDailyRecord }: PropsCustos) {
                           required
                         />
                         <span className="text-lg">{v}</span>
+                        <OptionPhoto label={v} />
                       </label>
                     ))}
                   </div>
@@ -163,7 +166,7 @@ export function Custos({ onSave, onNavigate, onExitDailyRecord }: PropsCustos) {
                   </label>
                   <div className="space-y-2">
                     {locations.map((loc) => (
-                      <label key={loc} className="flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
+                      <label key={loc} className="option-card flex items-center gap-3 p-3 border-2 border-gray-300 rounded-lg hover:bg-green-50 cursor-pointer">
                         <input
                           type="radio"
                           name="purchaseLocation"
@@ -174,6 +177,7 @@ export function Custos({ onSave, onNavigate, onExitDailyRecord }: PropsCustos) {
                           required
                         />
                         <span className="text-lg">{loc}</span>
+                        <OptionPhoto label={loc} />
                       </label>
                     ))}
                     {purchaseLocation === "Outro" && (
@@ -199,7 +203,7 @@ export function Custos({ onSave, onNavigate, onExitDailyRecord }: PropsCustos) {
             <button
               type="button"
               onClick={() => onNavigate("production-destination")}
-              className="w-full bg-white text-gray-700 py-4 px-6 rounded-xl text-lg font-bold border-2 border-gray-200 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+              className="w-full text-gray-600 py-3 px-6 rounded-xl text-base font-semibold hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
             >
               <ArrowLeft size={22} />
               Voltar
