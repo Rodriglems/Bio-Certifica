@@ -12,6 +12,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/apple-touch-icon.png'],
+      // Fotos das opções também ficam disponíveis sem internet na versão instalada pelo navegador.
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,webp,png,svg,ico}'],
+      },
       manifest: {
         name: 'BioCertifica',
         short_name: 'BioCertifica',
@@ -34,7 +38,7 @@ export default defineConfig({
             type: 'image/png',
           },
           {
-            src: '/icons/pwa-512x512.png',
+            src: '/icons/pwa-maskable-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
@@ -108,6 +112,11 @@ export default defineConfig({
         '/api': {
           target: 'http://localhost:3001',
           changeOrigin: true,
+          // Pelo proxy o navegador fala só com o Vite: não há requisição entre origens. Sem o
+          // cabeçalho, o login funciona em qualquer porta, por 127.0.0.1 ou pelo IP da rede.
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => proxyReq.removeHeader('origin'));
+          },
         },
       },
     },
