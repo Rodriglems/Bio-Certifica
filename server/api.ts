@@ -2,10 +2,18 @@
   import crypto from 'node:crypto';
   import { sendPasswordResetEmail } from './email';
   import express from 'express';
+  import rateLimit from 'express-rate-limit';
   import { pool } from './db';
 
   const app = express();
   app.disable('etag');
+
+  // Quantidade de proxies reversos à frente da API. Necessário para identificar o IP
+  // real do cliente; sem isso, todos os usuários atrás do proxy dividem o mesmo limite.
+  const trustProxyHops = Number(process.env.TRUST_PROXY ?? 0);
+  if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
+    app.set('trust proxy', trustProxyHops);
+  }
 
   const defaultCorsOrigins = ['http://localhost:5173', 'http://localhost', 'https://localhost', 'capacitor://localhost'];
   const configuredCorsOrigins = String(process.env.CORS_ORIGINS ?? '')
@@ -83,7 +91,13 @@
     }
   }
 
-  const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+  // O produtor pode passar dias sem internet: a sessão precisa durar para os registros
+  // guardados no celular subirem sozinhos quando a conexão voltar.
+  const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+  // Limite absoluto: mesmo com uso contínuo, a sessão termina e exige novo login.
+  const SESSION_MAX_AGE_DAYS = 90;
+  const MAX_RESET_CODE_ATTEMPTS = 5;
+  const INVALID_RESET_CODE_MESSAGE = 'Código inválido ou expirado';
   const sessions = new Map<string, { agricultorId: string; usuarioAuthId: string; username: string; expiresAt: number }>();
   const COLUMNS_CACHE_TTL_MS = 5_000;
   const tableColumnsCache = new Map<string, { expiresAt: number; promise: Promise<Set<string>> }>();
@@ -144,6 +158,11 @@
   async function createPasswordResetRequest(usuarioAuthId: string, code: string) {
     const expiresAt = new Date(Date.now() + 1000 * 60 * 15);
     const codeHash = hashPassword(code);
+    // Só o código mais recente vale; assim os anteriores não somam tentativas extras.
+    await pool.query(
+      'UPDATE password_reset_requests SET used_at = now() WHERE usuario_auth_id = $1 AND used_at IS NULL',
+      [usuarioAuthId],
+    );
     const result = await pool.query<{ id: string }>(
       `
       INSERT INTO password_reset_requests (usuario_auth_id, code_hash, expires_at)
@@ -184,6 +203,28 @@
     return token;
   }
 
+  // Devolve a nova expiração, ou null se a sessão foi revogada, expirou ou atingiu a idade máxima.
+  async function renewSession(token: string): Promise<Date | null> {
+    const result = await pool.query<{ expires_at: Date }>(
+      `
+      UPDATE auth_sessions
+      SET expires_at = LEAST($2::timestamptz, created_at + make_interval(days => $3::int))
+      WHERE token = $1
+        AND expires_at > now()
+        AND created_at + make_interval(days => $3::int) > now()
+      RETURNING expires_at
+      `.trim(),
+      [token, sessionExpiryDate().toISOString(), SESSION_MAX_AGE_DAYS],
+    );
+    return result.rows[0]?.expires_at ?? null;
+  }
+
+  function dropCachedSessions(shouldDrop: (token: string, session: { agricultorId: string; usuarioAuthId: string }) => boolean) {
+    for (const [token, session] of sessions) {
+      if (shouldDrop(token, session)) sessions.delete(token);
+    }
+  }
+
   async function getSessionFromRequest(req: express.Request): Promise<Session | null> {
     const authHeader = req.header('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
@@ -201,14 +242,20 @@
 
     const cached = sessions.get(token);
     if (cached && cached.expiresAt >= Date.now()) {
-      const newExpiry = sessionExpiryDate();
-      sessions.set(token, { ...cached, expiresAt: newExpiry.getTime() });
+      let renewedUntil: Date | null;
       try {
-        await pool.query('UPDATE auth_sessions SET expires_at = $2 WHERE token = $1', [token, newExpiry.toISOString()]);
+        renewedUntil = await renewSession(token);
       } catch {
         // ignora falhas de renovação; será revalidado no banco na próxima vez
+        return { token, ...cached };
       }
-      return { token, ...sessions.get(token)! };
+      if (!renewedUntil) {
+        sessions.delete(token);
+        return null;
+      }
+      const renewed = { ...cached, expiresAt: renewedUntil.getTime() };
+      sessions.set(token, renewed);
+      return { token, ...renewed };
     }
 
     const result = await pool.query<{
@@ -233,8 +280,12 @@
       return null;
     }
 
-    const newExpiry = sessionExpiryDate();
-    await pool.query('UPDATE auth_sessions SET expires_at = $2 WHERE token = $1', [token, newExpiry.toISOString()]);
+    const newExpiry = await renewSession(token);
+    if (!newExpiry) {
+      debugLog('[auth] session past max age', { token: tokenHint });
+      sessions.delete(token);
+      return null;
+    }
 
     const session = {
       agricultorId: row.agricultor_id,
@@ -450,14 +501,114 @@
       WHERE usuario_auth_id = $1
         AND used_at IS NULL
         AND expires_at > now()
+        AND attempts < $2
       ORDER BY created_at DESC
       LIMIT 1
       `.trim(),
-      [usuarioAuthId],
+      [usuarioAuthId, MAX_RESET_CODE_ATTEMPTS],
     );
 
     return resetResult.rows[0];
   }
+
+  // Responde ao cliente e devolve null quando o código não é aceito.
+  async function validateResetCode(usuarioAuthId: string, code: string, res: express.Response) {
+    const resetRow = await getLatestValidPasswordResetRequest(usuarioAuthId);
+    if (!resetRow) {
+      res.status(400).json({ ok: false, error: INVALID_RESET_CODE_MESSAGE });
+      return null;
+    }
+
+    // Registra a tentativa antes de comparar, para requisições simultâneas não escaparem do limite.
+    const attemptResult = await pool.query<{ attempts: number }>(
+      `
+      UPDATE password_reset_requests
+      SET attempts = attempts + 1
+      WHERE id = $1 AND used_at IS NULL AND attempts < $2
+      RETURNING attempts
+      `.trim(),
+      [resetRow.id, MAX_RESET_CODE_ATTEMPTS],
+    );
+    const attempts = attemptResult.rows[0]?.attempts;
+    if (attempts == null) {
+      res.status(400).json({ ok: false, error: INVALID_RESET_CODE_MESSAGE });
+      return null;
+    }
+
+    if (!verifyPassword(code, resetRow.code_hash)) {
+      const error = attempts >= MAX_RESET_CODE_ATTEMPTS
+        ? 'Muitas tentativas incorretas. Solicite um novo código.'
+        : INVALID_RESET_CODE_MESSAGE;
+      res.status(400).json({ ok: false, error });
+      return null;
+    }
+
+    return resetRow;
+  }
+
+  const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+
+  type RateLimitOptions = { windowMs: number; limit: number; message: string; onlyFailures?: boolean };
+
+  function rateLimitOptions({ windowMs, limit, message, onlyFailures = false }: RateLimitOptions) {
+    return {
+      windowMs,
+      limit,
+      skipSuccessfulRequests: onlyFailures,
+      standardHeaders: 'draft-7' as const,
+      legacyHeaders: false,
+      handler: (_req: express.Request, res: express.Response) => {
+        res.status(429).json({ ok: false, error: message });
+      },
+    };
+  }
+
+  // Limites por conta valem mesmo quando o atacante troca de IP. Os limites por IP são
+  // mais folgados porque várias pessoas de uma região podem sair pelo mesmo IP da operadora.
+  function limitByAccount(field: 'identifier' | 'email', options: RateLimitOptions) {
+    const accountKey = (req: express.Request) => normalizeIdentifier(String(req.body?.[field] ?? ''));
+    return rateLimit({
+      ...rateLimitOptions(options),
+      keyGenerator: accountKey,
+      skip: (req) => !accountKey(req),
+    });
+  }
+
+  const TOO_MANY_LOGIN_ATTEMPTS = 'Muitas tentativas de login. Aguarde 15 minutos e tente novamente.';
+  const TOO_MANY_CODE_REQUESTS = 'Muitos pedidos de código. Aguarde alguns minutos e tente novamente.';
+  const TOO_MANY_CODE_ATTEMPTS = 'Muitas tentativas com o código. Aguarde 15 minutos e tente novamente.';
+
+  const loginIpLimit = rateLimit(rateLimitOptions({
+    windowMs: FIFTEEN_MINUTES_MS,
+    limit: 50,
+    message: TOO_MANY_LOGIN_ATTEMPTS,
+    onlyFailures: true,
+  }));
+  const loginAccountLimit = limitByAccount('identifier', {
+    windowMs: FIFTEEN_MINUTES_MS,
+    limit: 10,
+    message: TOO_MANY_LOGIN_ATTEMPTS,
+    onlyFailures: true,
+  });
+  const forgotIpLimit = rateLimit(rateLimitOptions({ windowMs: ONE_HOUR_MS, limit: 20, message: TOO_MANY_CODE_REQUESTS }));
+  const forgotAccountLimit = limitByAccount('email', {
+    windowMs: FIFTEEN_MINUTES_MS,
+    limit: 3,
+    message: TOO_MANY_CODE_REQUESTS,
+  });
+  const resetCodeIpLimit = rateLimit(rateLimitOptions({ windowMs: FIFTEEN_MINUTES_MS, limit: 30, message: TOO_MANY_CODE_ATTEMPTS }));
+  const signupIpLimit = rateLimit(rateLimitOptions({
+    windowMs: ONE_HOUR_MS,
+    limit: 60,
+    message: 'Muitos cadastros a partir desta rede. Tente novamente mais tarde.',
+  }));
+  const passwordChangeIpLimit = rateLimit(rateLimitOptions({
+    windowMs: FIFTEEN_MINUTES_MS,
+    limit: 10,
+    message: 'Muitas tentativas de troca de senha. Aguarde 15 minutos e tente novamente.',
+    onlyFailures: true,
+  }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
@@ -473,7 +624,7 @@
     }
   });
 
-  app.post('/api/agricultor', async (req, res) => {
+  app.post('/api/agricultor', signupIpLimit, async (req, res) => {
     const {
       name,
       community,
@@ -508,7 +659,15 @@
       return;
     }
 
-    const client = await pool.connect();
+    const client = await pool.connect().catch((error: unknown) => {
+      console.error('[agricultor] falha ao conectar ao banco', error);
+      return null;
+    });
+    if (!client) {
+      res.status(500).json({ ok: false, error: 'Não foi possível conectar ao banco de dados. Tente novamente.' });
+      return;
+    }
+
     try {
       await client.query('BEGIN');
 
@@ -570,7 +729,7 @@
         },
       });
     } catch (error: any) {
-      await client.query('ROLLBACK');
+      await client.query('ROLLBACK').catch(() => undefined);
       if (error?.code === '23505') {
         res.status(409).json({ ok: false, error: 'Nome de usuário ou e-mail já está em uso' });
         return;
@@ -644,7 +803,7 @@
     }
   });
 
-  app.post('/api/login', async (req, res) => {
+  app.post('/api/login', loginIpLimit, loginAccountLimit, async (req, res) => {
     const { identifier, password } = req.body ?? {};
 
     if (!identifier || !password) {
@@ -701,7 +860,7 @@
     res.json({ ok: true });
   });
 
-  app.post('/api/password/change', async (req, res) => {
+  app.post('/api/password/change', passwordChangeIpLimit, async (req, res) => {
     const session = await requireSession(req, res);
     if (!session) return;
 
@@ -738,10 +897,17 @@
         }
       }
 
-      await pool.query('UPDATE usuarios_auth SET password_hash = $2 WHERE agricultor_id = $1', [
-        session.agricultorId,
-        hashPassword(cleanNewPassword),
-      ]);
+      // Mesma instrução para a senha e a revogação serem atômicas; só a sessão atual continua ativa.
+      await pool.query(
+        `
+        WITH updated AS (
+          UPDATE usuarios_auth SET password_hash = $2 WHERE agricultor_id = $1
+        )
+        DELETE FROM auth_sessions WHERE agricultor_id = $1 AND token <> $3
+        `.trim(),
+        [session.agricultorId, hashPassword(cleanNewPassword), session.token],
+      );
+      dropCachedSessions((token, cached) => cached.agricultorId === session.agricultorId && token !== session.token);
 
       res.json({ ok: true });
     } catch (error) {
@@ -750,7 +916,7 @@
     }
   });
 
-  app.post('/api/password/forgot', async (req, res) => {
+  app.post('/api/password/forgot', forgotIpLimit, forgotAccountLimit, async (req, res) => {
     const { email } = req.body ?? {};
     const cleanEmail = normalizeIdentifier(email);
 
@@ -778,7 +944,7 @@
     }
   });
 
-  app.post('/api/password/verify-code', async (req, res) => {
+  app.post('/api/password/verify-code', resetCodeIpLimit, async (req, res) => {
     const { email, code } = req.body ?? {};
 
     const cleanEmail = normalizeIdentifier(email);
@@ -796,16 +962,11 @@
         return;
       }
 
-      const resetRow = await getLatestValidPasswordResetRequest(user.id);
-      if (!resetRow) {
-        res.status(400).json({ ok: false, error: 'Código inválido ou expirado' });
-        return;
-      }
+      const resetRow = await validateResetCode(user.id, cleanCode, res);
+      if (!resetRow) return;
 
-      if (!verifyPassword(cleanCode, resetRow.code_hash)) {
-        res.status(400).json({ ok: false, error: 'Código inválido ou expirado' });
-        return;
-      }
+      // Código correto: zera o contador para a etapa seguinte (reset) não ser bloqueada.
+      await pool.query('UPDATE password_reset_requests SET attempts = 0 WHERE id = $1', [resetRow.id]);
 
       res.json({ ok: true });
     } catch (error) {
@@ -814,7 +975,7 @@
     }
   });
 
-  app.post('/api/password/reset', async (req, res) => {
+  app.post('/api/password/reset', resetCodeIpLimit, async (req, res) => {
     const { email, code, newPassword } = req.body ?? {};
 
     const cleanEmail = normalizeIdentifier(email);
@@ -833,16 +994,8 @@
         return;
       }
 
-      const resetRow = await getLatestValidPasswordResetRequest(user.id);
-      if (!resetRow) {
-        res.status(400).json({ ok: false, error: 'Código inválido ou expirado' });
-        return;
-      }
-
-      if (!verifyPassword(cleanCode, resetRow.code_hash)) {
-        res.status(400).json({ ok: false, error: 'Código inválido ou expirado' });
-        return;
-      }
+      const resetRow = await validateResetCode(user.id, cleanCode, res);
+      if (!resetRow) return;
 
       const newHash = hashPassword(cleanNewPassword);
       const client = await pool.connect();
@@ -850,6 +1003,7 @@
         await client.query('BEGIN');
         await client.query('UPDATE usuarios_auth SET password_hash = $2 WHERE id = $1', [user.id, newHash]);
         await client.query('UPDATE password_reset_requests SET used_at = now() WHERE id = $1', [resetRow.id]);
+        await client.query('DELETE FROM auth_sessions WHERE usuario_auth_id = $1', [user.id]);
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
@@ -857,6 +1011,7 @@
       } finally {
         client.release();
       }
+      dropCachedSessions((_token, cached) => cached.usuarioAuthId === user.id);
 
       res.json({ ok: true });
     } catch (error) {
@@ -1352,6 +1507,11 @@
       const message = error instanceof Error ? error.message : 'Erro desconhecido';
       res.status(500).json({ ok: false, error: message });
     }
+  });
+
+  // No Express 4, uma rejeição fora de try/catch em rota async encerraria o processo inteiro.
+  process.on('unhandledRejection', (reason) => {
+    console.error('[api] erro assíncrono não tratado:', reason);
   });
 
   const port = Number(process.env.PORT ?? process.env.API_PORT ?? '3001');
